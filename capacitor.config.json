@@ -5,6 +5,9 @@
   "server": {
     "androidScheme": "https"
   },
+  "android": {
+    "allowMixedContent": true
+  },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
