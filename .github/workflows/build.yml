@@ -24,9 +24,10 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-
+        
       - name: Add Android platform
-        run: npx cap add android
+        run: npx cap add android || true
+
 
       - name: Copy web assets
         run: npx cap copy android
