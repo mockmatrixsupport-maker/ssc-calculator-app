@@ -205,8 +205,7 @@ async function calculateFromFiles() {
   processData({ parts: uploadedFiles, count: Object.keys(uploadedFiles).length });
 }
 
-// ─── DIRECT FETCH (no bridge, user's own IP) ───
-async function fetchDirect() {
+  async function fetchDirect() {
   const sscUrl = document.getElementById('sscUrl').value.trim();
   if (!sscUrl) { alert('SSC URL daalo!'); return; }
 
@@ -214,8 +213,7 @@ async function fetchDirect() {
   document.getElementById('results').style.display = 'none';
   document.getElementById('fetchBtn').disabled = true;
 
-  log('Direct fetch ho raha hai (aapke phone ke IP se)...');
-  log(`URL: ${sscUrl.substring(0, 70)}...`);
+  log('Native fetch ho raha hai...');
 
   try {
     const urlMatch = sscUrl.match(/(https?:\/\/.+\/)ViewCandResponse\d*\.aspx/i);
@@ -239,21 +237,26 @@ async function fetchDirect() {
       log(`Part ${i} fetch ho raha hai...`);
 
       try {
-        const resp = await fetch(url, {
-          method: 'GET',
+        // Use CapacitorHttp — native HTTP, no CORS
+        const response = await CapacitorHttp.get({
+          url: url,
           headers: {
-            'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
-            'Accept-Language': 'en-IN,en;q=0.9'
-          },
-          credentials: 'include'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en-IN;q=0.9,en;q=0.8',
+            'Referer': 'https://sscexams.cbexams.com/',
+            'Connection': 'keep-alive'
+          }
         });
 
-        if (!resp.ok) {
-          log(`Part ${i}: HTTP ${resp.status} — ruk gaye`, 'log-warn');
+        log(`Part ${i}: HTTP ${response.status}`);
+
+        if (response.status !== 200) {
+          log(`Part ${i}: HTTP ${response.status} — ruk gaye`, 'log-warn');
           break;
         }
 
-        const html = await resp.text();
+        const html = response.data;
 
         if (!html.includes('Q.No') && !html.includes('ViewCandResponse')) {
           log(`Part ${i}: Data nahi mila — complete`, 'log-info');
@@ -270,12 +273,12 @@ async function fetchDirect() {
     }
 
     if (Object.keys(parts).length === 0) {
-      log('Koi part nahi mila! URL check karo.', 'log-err');
+      log('Koi part nahi mila!', 'log-err');
       document.getElementById('fetchBtn').disabled = false;
       return;
     }
 
-    log(`✓ ${Object.keys(parts).length} part(s) mila — calculate ho raha hai...`, 'log-ok');
+    log(`✓ ${Object.keys(parts).length} parts mila — calculate ho raha hai...`, 'log-ok');
     processData({ parts, count: Object.keys(parts).length });
 
   } catch (e) {
@@ -283,7 +286,7 @@ async function fetchDirect() {
   }
 
   document.getElementById('fetchBtn').disabled = false;
-}
+  }
 
 // ─── MAIN PARSER ───
 function processData(data) {
