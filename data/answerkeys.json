@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ssc-gd-2025-phase2",
+    "exam": "SSC GD Constable 2025 Phase II",
+    "type": "ssc",
+    "badge": "NEW",
+    "date": "2025-06-20",
+    "shifts": ["Shift 1", "Shift 2", "Shift 3"],
+    "active": true,
+    "note": "Answer key released for all shifts"
+  },
+  {
+    "id": "rrb-ntpc-2026-cbt1",
+    "exam": "RRB NTPC 2026 CBT 1",
+    "type": "rrb",
+    "badge": "NEW",
+    "date": "2026-06-18",
+    "shifts": ["Shift 1", "Shift 2"],
+    "active": true,
+    "note": "Answer key released. Objection window open till 25 June"
+  },
+  {
+    "id": "ssc-cgl-2025-tier1",
+    "exam": "SSC CGL 2025 Tier I",
+    "type": "ssc",
+    "badge": "",
+    "date": "2025-05-10",
+    "shifts": ["Shift 1", "Shift 2", "Shift 3", "Shift 4"],
+    "active": false,
+    "note": "Objection window closed"
+  }
+]
