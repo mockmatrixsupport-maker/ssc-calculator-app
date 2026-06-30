@@ -74,8 +74,8 @@
       <div>
         <p class="exam-id-tag hidden" id="examIdTag"></p>
         <h1 id="pageTitleText">SSC Score Calculator</h1>
-        <p>CGL · CHSL · CPO · GD · MTS · JE · Steno · Selection Post · JHT</p>
-      </div>
+        <p id="examSubtitle">CGL · CHSL · CPO · GD · MTS · JE · Steno · Selection Post · JHT</p>
+     </div>
     </div>
 
     <!-- Input Card -->
@@ -245,6 +245,7 @@ const pageTitleText = document.getElementById('pageTitleText');
 const markingCorrect = document.getElementById('markingCorrect');
 const markingWrong = document.getElementById('markingWrong');
 const DEFAULT_TITLE = 'SSC Score Calculator';
+const examSubtitle = document.getElementById('examSubtitle');
 
 SSC_EXAMS.forEach(ex => {
   const opt = document.createElement('option');
@@ -253,24 +254,25 @@ SSC_EXAMS.forEach(ex => {
   examSelect.appendChild(opt);
 });
 
-function selectExam(ex) {
+  function selectExam(ex) {
   if (!ex) {
     markingCorrect.value = '';
     markingWrong.value = '';
     examIdTag.textContent = '';
     examIdTag.classList.add('hidden');
     pageTitleText.textContent = DEFAULT_TITLE;
+    examSubtitle.classList.remove('hidden');   // show subtitle again
     return;
   }
-  // Marking values are kept silently for the score engine — no visible
-  // marking-scheme card is shown on this page any more.
   markingCorrect.value = ex.correct;
   markingWrong.value = ex.wrong;
 
   examIdTag.textContent = ex.id;
-  examIdTag.classList.remove('hidden');
+  examIdTag.classList.add('hidden');           // ← keep id tag hidden too
   pageTitleText.textContent = ex.label.toUpperCase() + ' SCORE CALCULATOR';
-}
+  examSubtitle.classList.add('hidden');        // hide subtitle
+  }
+
 
 examSelect.addEventListener('change', () => {
   const ex = SSC_EXAMS.find(e => e.id === examSelect.value);
