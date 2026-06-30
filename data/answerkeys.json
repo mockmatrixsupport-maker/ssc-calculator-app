@@ -25,5 +25,24 @@
     "date": "2025-05-10",
     "active": false,
     "note": "Objection window closed"
+  },
+  {
+    "id": "rrb-grpd-2025",
+    "exam": "RRB Group D 2025",
+    "type": "rrb",
+    "badge": "",
+    "date": "2025-03-02",
+    "active": false,
+    "note": "Final answer key released"
+  },
+  {
+    "id": "ssc-chsl-2025-tier1",
+    "exam": "SSC CHSL 2025 — Tier I",
+    "type": "ssc",
+    "badge": "",
+    "date": "2025-08-14",
+    "active": false,
+    "note": "Result declared"
   }
 ]
+
