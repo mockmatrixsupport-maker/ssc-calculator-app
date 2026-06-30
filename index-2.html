@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Rank Score Master — Calculate your SSC & Railway exam scores instantly from official answer keys.">
+<meta name="theme-color" content="#0f766e">
+<title>Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<link rel="apple-touch-icon" href="logo.jpg">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.hero { padding: var(--sp-8) 0 var(--sp-6); text-align: center; }
+
+.hero__icon {
+  width: 76px; height: 76px; border-radius: 22px;
+  margin: 0 auto var(--sp-5); display: block; object-fit: cover;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg), var(--glow);
+}
+
+.hero__eyebrow {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-light); margin-bottom: var(--sp-3);
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+}
+.hero__eyebrow::before, .hero__eyebrow::after { content:''; width: 18px; height: 1px; background: var(--border-strong); }
+
+.hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 7vw, 2.7rem); font-weight: 700; letter-spacing: -0.02em;
+  color: var(--text-primary); line-height: 1.08; margin-bottom: var(--sp-3);
+}
+.hero__title em { font-style: normal; color: var(--ink-light); }
+
+.hero__sub { font-size: 0.88rem; color: var(--text-secondary); max-width: 300px; margin: 0 auto; line-height: 1.6; }
+
+/* ── Calculator Cards ── */
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-8); }
+@media (max-width: 420px) { .calc-grid { grid-template-columns: 1fr; } }
+
+.calc-card {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: var(--sp-6) var(--sp-4); background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r-xl); text-decoration: none; cursor: pointer;
+  transition: all 0.25s var(--ease); gap: var(--sp-4); position: relative; overflow: hidden;
+}
+.calc-card:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
+.calc-card:active { transform: translateY(-1px); }
+
+.calc-icon {
+  width: 54px; height: 54px; border-radius: var(--r-lg); object-fit: cover;
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-sm);
+}
+
+.calc-card__title { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; margin-bottom: 4px; }
+.calc-card__sub { font-size: 0.7rem; color: var(--text-muted); line-height: 1.5; }
+
+.calc-card__arrow {
+  width: 28px; height: 28px; border-radius: var(--r-full); background: var(--bg-input);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  margin-top: auto; transition: all var(--dur) var(--ease);
+}
+.calc-card__arrow svg { width: 14px; height: 14px; color: var(--text-muted); }
+.calc-card:hover .calc-card__arrow { border-color: var(--ink); background: var(--ink); }
+.calc-card:hover .calc-card__arrow svg { color: #fff; }
+
+/* ── Answer Key Section ── */
+.answerkey-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-4); }
+.answerkey-title { display: flex; align-items: center; gap: var(--sp-2); font-family: var(--font-display); font-size: 0.92rem; font-weight: 700; color: var(--text-primary); }
+
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pass); animation: pulse-dot 1.5s ease infinite; flex-shrink: 0; }
+
+.ak-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.ak-card {
+  display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg);
+  cursor: pointer; text-decoration: none; transition: all 0.2s var(--ease);
+}
+.ak-card:hover { border-color: var(--border-strong); background: var(--bg-card-hover); transform: translateX(3px); }
+.ak-card--inactive { opacity: 0.5; cursor: default; }
+.ak-card--inactive:hover { transform: none; border-color: var(--border); background: var(--bg-card); }
+
+.ak-card__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.ak-card--ssc .ak-card__dot { background: var(--ink); }
+.ak-card--rrb .ak-card__dot { background: var(--gold); }
+.ak-card--inactive .ak-card__dot { background: var(--text-muted); }
+
+.ak-card__info { flex: 1; min-width: 0; }
+.ak-card__exam { font-size: 0.81rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ak-card__meta { display: flex; align-items: center; gap: var(--sp-2); margin-top: 4px; flex-wrap: wrap; }
+.ak-card__date { font-size: 0.66rem; color: var(--text-muted); font-family: var(--font-mono); }
+.ak-card__note { font-size: 0.67rem; color: var(--text-secondary); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ak-card__action svg { width: 16px; height: 16px; color: var(--text-muted); transition: color var(--dur) var(--ease); flex-shrink: 0; }
+.ak-card:hover .ak-card__action svg { color: var(--text-primary); }
+
+.ak-skeleton {
+  height: 70px; border-radius: var(--r-lg); border: 1px solid var(--border);
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.ak-empty { text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--text-muted); font-size: 0.8rem; }
+
+.app-footer { text-align: center; padding: var(--sp-6) var(--sp-4); border-top: 1px solid var(--border); margin-top: var(--sp-8); }
+.app-footer p { font-size: 0.7rem; color: var(--text-muted); }
+.app-footer a { color: var(--ink-light); }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <a href="index.html" class="app-logo">
+      <img src="logo.jpg" alt="Rank Score Master" class="app-logo__icon">
+      <div class="app-logo__text">
+        <span class="app-logo__name">Rank Score Master</span>
+        <span class="app-logo__tagline">SSC · Railway · Analysis</span>
+      </div>
+    </a>
+    <div class="header-actions">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">
+        <svg id="iconDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg id="iconLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="page-main">
+  <div class="container">
+
+    <section class="hero fade-up">
+      <img src="logo.jpg" alt="Rank Score Master" class="hero__icon">
+      <p class="hero__eyebrow">Score · Rank · Analyse</p>
+      <h1 class="hero__title">Welcome to<br><em>Rank Score Master</em></h1>
+      <p class="hero__sub">Calculate your exam score instantly from the official answer key — no waiting, no guesswork.</p>
+    </section>
+
+    <div class="calc-grid fade-up fade-up-1">
+      <a href="ssc-calculator.html" class="calc-card">
+        <img src="ssc-logo.jpg" alt="SSC" class="calc-icon">
+        <div>
+          <div class="calc-card__title">SSC Exams</div>
+          <div class="calc-card__sub">CGL · CHSL · GD<br>CPO · MTS & more</div>
+        </div>
+        <div class="calc-card__arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </a>
+
+      <a href="rrb-calculator.html" class="calc-card">
+        <img src="railway-logo.jpg" alt="Railway" class="calc-icon">
+        <div>
+          <div class="calc-card__title">Railway Exams</div>
+          <div class="calc-card__sub">NTPC · Group D<br>ALP · JE & more</div>
+        </div>
+        <div class="calc-card__arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </a>
+    </div>
+
+    <section class="fade-up fade-up-2">
+      <div class="card">
+        <div class="answerkey-header">
+          <div class="answerkey-title"><div class="live-dot"></div>Latest Answer Keys</div>
+        </div>
+        <div class="ak-list" id="akList">
+          <div class="ak-skeleton"></div>
+          <div class="ak-skeleton"></div>
+          <div class="ak-skeleton"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="app-footer">
+  <p>Rank Score Master &copy; 2026 &nbsp;·&nbsp; <a href="#">MockMatrix</a> &nbsp;·&nbsp; For educational use only</p>
+</footer>
+
+<script>
+const html = document.documentElement;
+const toggleBtn = document.getElementById('themeToggle');
+const iconDark = document.getElementById('iconDark');
+const iconLight = document.getElementById('iconLight');
+
+function applyTheme(t) {
+  html.setAttribute('data-theme', t);
+  localStorage.setItem('rsm-theme', t);
+  iconDark.classList.toggle('hidden', t !== 'dark');
+  iconLight.classList.toggle('hidden', t === 'dark');
+}
+applyTheme(localStorage.getItem('rsm-theme') || 'dark');
+toggleBtn.addEventListener('click', () => applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
+
+async function loadAnswerKeys() {
+  const list = document.getElementById('akList');
+  try {
+    const res = await fetch('data/answerkeys.json');
+    const data = await res.json();
+    if (!data.length) { list.innerHTML = '<div class="ak-empty">No answer keys released yet.<br>Check back on exam day.</div>'; return; }
+
+    list.innerHTML = data.map(ak => {
+      const isActive = ak.active;
+      const page = ak.type === 'rrb' ? 'rrb-calculator.html' : 'ssc-calculator.html';
+      const badge = ak.badge ? `<span class="badge badge--new">${ak.badge}</span>` : '';
+      return `
+        <a href="${isActive ? page : '#'}" class="ak-card ak-card--${ak.type} ${!isActive ? 'ak-card--inactive' : ''}">
+          <div class="ak-card__dot"></div>
+          <div class="ak-card__info">
+            <div class="ak-card__exam">${ak.exam}</div>
+            <div class="ak-card__meta">
+              <span class="badge badge--${ak.type}">${ak.type.toUpperCase()}</span>
+              ${badge}
+              <span class="ak-card__date">${formatDate(ak.date)}</span>
+            </div>
+            <div class="ak-card__note">${ak.note}</div>
+          </div>
+          <div class="ak-card__action">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </a>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="ak-empty">Could not load answer keys.<br>Please try again later.</div>';
+  }
+}
+function formatDate(d) { try { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return d; } }
+loadAnswerKeys();
+</script>
+</body>
+</html>
