@@ -1,0 +1,16 @@
+{
+  "appId": "com.rankscoremaster.app",
+  "appName": "Rank Score Master",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
