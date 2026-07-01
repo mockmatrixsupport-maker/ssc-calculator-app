@@ -1,0 +1,118 @@
+name: Build Signed APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      # ── Stage the web app into www/ ──────────────────────────────
+      # The site lives at repo root (index.html, css/, js/, data/, logos),
+      # but Capacitor needs a dedicated webDir. We copy everything it
+      # needs into www/ at build time so nothing has to be duplicated
+      # by hand in the repo itself.
+      - name: Stage web assets into www/
+        run: |
+          mkdir -p www
+          cp index.html ssc-calculator.html rrb-calculator.html www/
+          cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
+          cp -r css www/
+          cp -r js www/
+          cp -r data www/
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Copy web assets
+        run: npx cap copy android
+
+      - name: Sync
+        run: npx cap sync android
+
+      - name: Allow mixed content in WebView
+        run: |
+          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
+          grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+
+      # ── Permissions needed for the Share / Save-to-gallery buttons ──
+      - name: Add media permissions
+        run: |
+          grep -q 'READ_MEDIA_IMAGES' android/app/src/main/AndroidManifest.xml || \
+            sed -i '0,/<application/s//<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" \/>\n    <application/' android/app/src/main/AndroidManifest.xml
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # ── Every build gets a unique, always-increasing versionCode so the
+      # Android package installer recognizes each APK as a newer version
+      # instead of re-showing the same old one. GITHUB_RUN_NUMBER increments
+      # automatically on every workflow run — no manual bookkeeping needed.
+      - name: Patch release signing config + version + target SDK into build.gradle
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: "1.0.${{ github.run_number }}"
+        run: python3 patch_gradle_signing.py
+
+      # ── Decode keystore from secret ──────────────────────────────
+      - name: Decode signing keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      # ── Build signed RELEASE APK ─────────────────────────────────
+      - name: Build Signed Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RankScoreMaster-Signed-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      # ── Also build AAB (needed for Play Store) ───────────────────
+      - name: Build Signed AAB (Play Store bundle)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Upload Signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: RankScoreMaster-Signed-AAB
+          path: android/app/build/outputs/bundle/release/app-release.aab
