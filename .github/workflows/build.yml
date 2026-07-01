@@ -44,11 +44,23 @@ jobs:
 
       - name: Copy web assets
         run: npx cap copy android
-
+        
       - name: Sync
         run: npx cap sync android
 
+      # --- ADD THIS NEW STEP ---
+      - name: Update Target SDK and Version
+        run: |
+          # Force Android 14 (API 34) compliance for Play Protect
+          sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/variables.gradle
+          sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/variables.gradle
+          # Dynamically bump version code based on GitHub Actions run number so it installs over the old APK
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+      # -------------------------
+
       - name: Allow mixed content in WebView
+
         run: |
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
           grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
