@@ -3,9 +3,7 @@
   "appName": "Rank Score Master",
   "webDir": "www",
   "server": {
-    "url": "https://ssc-calculator-app.pages.dev/",
-    "androidScheme": "https",
-    "cleartext": true
+    "androidScheme": "https"
   },
   "android": {
     "allowMixedContent": true
