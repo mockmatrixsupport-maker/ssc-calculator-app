@@ -226,59 +226,149 @@ const RSMUI = (() => {
   // plus one solid brand line pinned to the bottom edge — the exported
   // image should be identifiable as coming from the app even if it's
   // forwarded around outside it.
-  function applyWatermark(canvas) {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return canvas;
-    const w = canvas.width, h = canvas.height;
+    async function captureCardImage(cardEl) {
+    const html2canvas = await ensureHtml2Canvas();
+    
+    // 1. Hide the action buttons so they aren't in the saved image
+    const actionRows = cardEl.querySelectorAll('.action-row');
+    actionRows.forEach(el => { el.style.display = 'none'; });
 
+    // 2. Save all original mobile styles so we can restore them later
+    const originalWidth = cardEl.style.width;
+    const originalMaxWidth = cardEl.style.maxWidth;
+    const originalMargin = cardEl.style.margin;
+    const originalBg = cardEl.style.background;
+    const originalBorder = cardEl.style.border;
+    const originalBoxShadow = cardEl.style.boxShadow;
+
+    // 3. FORCE DESKTOP MODE & TRANSPARENCY
+    // We make the card background transparent here so the watermark can show through from behind!
+    cardEl.style.setProperty('width', '900px', 'important');
+    cardEl.style.setProperty('max-width', '900px', 'important');
+    cardEl.style.setProperty('margin', '0', 'important');
+    cardEl.style.setProperty('background', 'transparent', 'important');
+    cardEl.style.setProperty('border', 'none', 'important');
+    cardEl.style.setProperty('box-shadow', 'none', 'important');
+
+    // 4. Force Tables to Expand (No scrollbars/cropping)
+    const scrollEls = cardEl.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
+    const originalStyles = new Map();
+    scrollEls.forEach(el => {
+      originalStyles.set(el, el.getAttribute('style') || '');
+      el.style.setProperty('overflow', 'visible', 'important');
+      el.style.setProperty('overflow-x', 'visible', 'important');
+      if (el.classList.contains('mt-col-section--scroll')) {
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('white-space', 'nowrap', 'important');
+      }
+    });
+
+    // Determine if the app is currently in Dark or Light mode
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const baseBg = isDark ? '#131b19' : '#ffffff'; 
+
+    let contentCanvas;
+    try {
+      // Take the picture with a NULL background so we can layer things manually
+      contentCanvas = await html2canvas(cardEl, { 
+        scale: 3, 
+        backgroundColor: null, 
+        useCORS: true,
+        windowWidth: 1000 
+      });
+    } finally {
+      // 5. RESTORE ORIGINAL MOBILE STYLES INSTANTLY
+      actionRows.forEach(el => { el.style.display = ''; });
+      
+      cardEl.style.width = originalWidth;
+      cardEl.style.maxWidth = originalMaxWidth;
+      cardEl.style.margin = originalMargin;
+      cardEl.style.background = originalBg;
+      cardEl.style.border = originalBorder;
+      cardEl.style.boxShadow = originalBoxShadow;
+
+      scrollEls.forEach(el => {
+        const orig = originalStyles.get(el);
+        if (orig) el.setAttribute('style', orig);
+        else el.removeAttribute('style');
+      });
+    }
+
+    // 6. COMPOSE THE FINAL IMAGE (Layers: Background -> Watermark -> Text -> Footer)
+    const w = contentCanvas.width;
+    const h = contentCanvas.height;
+    
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = w;
+    finalCanvas.height = h;
+    const ctx = finalCanvas.getContext('2d');
+
+    // Layer A: Solid base background
+    ctx.fillStyle = baseBg;
+    ctx.fillRect(0, 0, w, h);
+
+    // Layer B: Center Logo Watermark
+    try {
+      const logo = new Image();
+      logo.crossOrigin = 'anonymous';
+      logo.src = 'logo.jpg';
+      await new Promise((resolve, reject) => {
+        logo.onload = resolve;
+        logo.onerror = reject;
+      });
+      
+      const size = Math.min(w, h) * 0.6;
+      const x = (w - size) / 2;
+      const y = (h - size) / 2;
+      
+      ctx.save();
+      if (!isDark) {
+        // In light mode, 'multiply' mathematically deletes the white background of a jpeg
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = 0.05;
+      } else {
+        // In dark mode, we just drop the opacity super low so the white box blends in
+        ctx.globalAlpha = 0.03;
+      }
+      ctx.drawImage(logo, x, y, size, size);
+      ctx.restore();
+    } catch (e) {
+      console.warn('Could not load logo for watermark', e);
+    }
+
+    // Layer C: Diagonal Text Watermark
     ctx.save();
-    ctx.font = `${Math.round(w * 0.045)}px sans-serif`;
-    ctx.fillStyle = 'rgba(150,150,150,0.16)';
+    ctx.font = `bold ${Math.round(w * 0.045)}px sans-serif`;
+    ctx.fillStyle = 'rgba(150,150,150,0.06)'; // Super faint
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.translate(w / 2, h / 2);
-    ctx.rotate(-Math.PI / 8);
+    ctx.rotate(-Math.PI / 7);
     const stepY = h * 0.16;
     for (let y = -h; y < h; y += stepY) {
       ctx.fillText('RANK SCORE MASTER', 0, y);
     }
     ctx.restore();
 
-    const barH = Math.max(28, Math.round(h * 0.035));
+    // Layer D: The actual Tables, Text, and Scores (Placing them ON TOP of the watermark)
+    ctx.drawImage(contentCanvas, 0, 0);
+
+    // Layer E: Solid Brand Bar pinned at the very bottom
+    const barH = Math.max(30, Math.round(h * 0.035));
     ctx.save();
-    ctx.fillStyle = 'rgba(15,118,110,0.92)';
+    ctx.fillStyle = 'rgba(15,118,110,0.95)';
     ctx.fillRect(0, h - barH, w, barH);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `600 ${Math.round(barH * 0.5)}px sans-serif`;
+    ctx.font = `600 ${Math.round(barH * 0.45)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('RANK SCORE MASTER  ·  rankscoremaster.app', w / 2, h - barH / 2);
     ctx.restore();
 
-    return canvas;
-  }
-
-  async function captureCardImage(cardEl) {
-    const html2canvas = await ensureHtml2Canvas();
-    // Hide the action button rows so the exported image is a clean
-    // scorecard — details + marks + rank grid only.
-    const actionRows = cardEl.querySelectorAll('.action-row');
-    actionRows.forEach(el => { el.style.display = 'none'; });
-
-    let bg = '#0b0f14';
-    try {
-      const bodyBg = getComputedStyle(document.body).backgroundColor;
-      if (bodyBg && bodyBg !== 'rgba(0, 0, 0, 0)' && bodyBg !== 'transparent') bg = bodyBg;
-    } catch (e) {}
-
-    let canvas;
-    try {
-      canvas = await html2canvas(cardEl, { scale: 3, backgroundColor: bg, useCORS: true });
-    } finally {
-      actionRows.forEach(el => { el.style.display = ''; });
+    return finalCanvas;
     }
-    return applyWatermark(canvas);
-  }
+       
+
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
