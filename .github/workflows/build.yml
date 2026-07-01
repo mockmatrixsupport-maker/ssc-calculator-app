@@ -76,7 +76,20 @@ jobs:
             exit 1
           fi
           yes | "$SDKMANAGER" --licenses > /dev/null || true
+          # GitHub runners ship with pre-installed platforms/build-tools that
+          # can be corrupted/stubbed, causing sdkmanager to skip a real
+          # download. Wipe ALL pre-installed platforms and build-tools first
+          # to force a completely clean install of only what we need.
+          rm -rf "$ANDROID_HOME/platforms"
+          rm -rf "$ANDROID_HOME/build-tools"
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          # Verify the jar actually downloaded correctly
+          JAR="$ANDROID_HOME/platforms/android-35/android.jar"
+          if [ ! -s "$JAR" ]; then
+            echo "ERROR: android.jar missing or empty after install"
+            exit 1
+          fi
+          echo "android.jar size: $(stat -c%s "$JAR") bytes"
 
       # ── Every build gets a unique, always-increasing versionCode so the
       # Android package installer recognizes each APK as a newer version
@@ -132,3 +145,4 @@ jobs:
         with:
           name: RankScoreMaster-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
+          
