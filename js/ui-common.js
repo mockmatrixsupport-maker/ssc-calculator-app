@@ -228,8 +228,7 @@ const RSMUI = (() => {
   // image should be identifiable as coming from the app even if it's
   // forwarded around outside it.
   
-  
-  async function captureCardImage(cardEl) {
+    async function captureCardImage(cardEl) {
     const htmlToImage = await ensureHtmlToImage();
     
     // 1. Hide buttons so they aren't in the saved image
@@ -242,7 +241,7 @@ const RSMUI = (() => {
     const baseBg = isDark ? '#131b19' : '#ffffff';
     const textColor = isDark ? '#f1f5f4' : '#14201d';
 
-    // 3. Force Desktop Mode for crisp, uncropped rendering directly on the live card
+    // 3. Force Desktop Mode for crisp, uncropped rendering
     cardEl.style.setProperty('width', '900px', 'important');
     cardEl.style.setProperty('max-width', '900px', 'important');
     cardEl.style.setProperty('margin', '0', 'important');
@@ -253,7 +252,7 @@ const RSMUI = (() => {
     cardEl.style.setProperty('border-radius', '0', 'important');
     cardEl.style.setProperty('box-shadow', 'none', 'important');
 
-    // 4. Force Tables to Expand (No scrollbars/cropping)
+    // 4. Force Tables to Expand & Prevent "Dot Dot" Truncation
     const scrollEls = cardEl.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
     const originalStyles = new Map();
     scrollEls.forEach(el => {
@@ -266,20 +265,31 @@ const RSMUI = (() => {
       }
     });
 
-    // 5. TEMPORARY CSS: Make data HUGE, BOLD, and SHARP
+    // 5. TEMPORARY CSS: Sharp, dense, and clean fonts (Not overly bulky)
     const tempStyle = document.createElement('style');
     tempStyle.textContent = `
       .result-card > * { position: relative; z-index: 2; }
-      .result-card__header { font-size: 1.4rem !important; font-weight: 900 !important; background: transparent !important; border: none !important; margin-bottom: 20px !important; }
-      .detail-table__value, .detail-table__label, .marks-table th, .marks-table td { font-size: 1.15rem !important; font-weight: 800 !important; padding: 12px !important; }
-      .mt-pass, .mt-fail, .mt-bonus, .mt-score { font-size: 1.35rem !important; font-weight: 900 !important; }
-      .rank-card__value { font-size: 1.8rem !important; font-weight: 900 !important; }
-      .rank-card__label { font-size: 1.1rem !important; font-weight: 700 !important; }
-      .rank-banner { font-size: 1.2rem !important; font-weight: 800 !important; padding: 14px !important; }
+      
+      /* Crisp, thinner header */
+      .result-card__header { font-size: 1.15rem !important; font-weight: 700 !important; background: transparent !important; border: none !important; margin-bottom: 20px !important; }
+      
+      /* Standardized, sharp table text */
+      .detail-table__value, .detail-table__label, .marks-table th, .marks-table td { font-size: 0.95rem !important; font-weight: 600 !important; padding: 10px !important; }
+      
+      /* Fix the "dot dot" truncation on section names */
+      .mt-col-section { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
+      
+      /* Distinct but not massive scores */
+      .mt-pass, .mt-fail, .mt-bonus, .mt-score { font-size: 1.1rem !important; font-weight: 700 !important; }
+      
+      /* Rank Data */
+      .rank-card__value { font-size: 1.4rem !important; font-weight: 700 !important; }
+      .rank-card__label { font-size: 0.85rem !important; font-weight: 600 !important; }
+      .rank-banner { font-size: 1rem !important; font-weight: 700 !important; padding: 12px !important; }
     `;
     document.head.appendChild(tempStyle);
 
-    // 6. Inject Faint Logo Watermark (Directly into the DOM, behind the text)
+    // 6. Inject Logo Watermark (Exactly 5% Opacity)
     const watermark = document.createElement('img');
     watermark.src = 'logo.jpg';
     watermark.crossOrigin = 'anonymous';
@@ -290,7 +300,7 @@ const RSMUI = (() => {
       width: 60%;
       z-index: 1;
       pointer-events: none;
-      opacity: 0.03; /* Extremely low visibility */
+      opacity: 0.05;
     `;
     cardEl.insertBefore(watermark, cardEl.firstChild);
 
@@ -300,9 +310,9 @@ const RSMUI = (() => {
       background: rgba(15,118,110,1);
       color: #ffffff;
       text-align: center;
-      padding: 16px;
-      font-size: 17px;
-      font-weight: 700;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 600;
       margin: 24px -16px -16px -16px;
       font-family: sans-serif;
       position: relative;
@@ -319,11 +329,11 @@ const RSMUI = (() => {
         watermark.onerror = resolve;
       }
     });
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     let canvas;
     try {
-      // Capture using html-to-image (Pixel ratio 3 creates a high-def 2700px image)
+      // Capture using html-to-image
       canvas = await htmlToImage.toCanvas(cardEl, {
         pixelRatio: 3,
         backgroundColor: baseBg,
@@ -346,11 +356,8 @@ const RSMUI = (() => {
     }
 
     return canvas;
-       }
+    }
    
-
-
-
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
