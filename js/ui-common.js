@@ -230,38 +230,34 @@ const RSMUI = (() => {
   
   
   async function captureCardImage(cardEl) {
-    // Load the new superior library
     const htmlToImage = await ensureHtmlToImage();
     
+    // 1. Hide buttons so they aren't in the saved image
+    const actionRows = cardEl.querySelectorAll('.action-row');
+    actionRows.forEach(el => { el.style.display = 'none'; });
+
+    // 2. Save original styles to restore them instantly later
+    const originalCssText = cardEl.style.cssText;
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const baseBg = isDark ? '#131b19' : '#ffffff';
     const textColor = isDark ? '#f1f5f4' : '#14201d';
 
-    // 1. Create a hidden clone to prevent mobile clipping bugs
-    const clone = cardEl.cloneNode(true);
-    
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-      position: absolute; top: -9999px; left: -9999px;
-      width: 900px;
-      background: ${baseBg}; color: ${textColor};
-      padding: 0; margin: 0; box-sizing: border-box;
-    `;
-    
-    // 2. Clean up buttons
-    const actionRows = clone.querySelectorAll('.action-row');
-    actionRows.forEach(el => el.remove());
+    // 3. Force Desktop Mode for crisp, uncropped rendering directly on the live card
+    cardEl.style.setProperty('width', '900px', 'important');
+    cardEl.style.setProperty('max-width', '900px', 'important');
+    cardEl.style.setProperty('margin', '0', 'important');
+    cardEl.style.setProperty('position', 'relative', 'important');
+    cardEl.style.setProperty('background', baseBg, 'important');
+    cardEl.style.setProperty('color', textColor, 'important');
+    cardEl.style.setProperty('border', 'none', 'important');
+    cardEl.style.setProperty('border-radius', '0', 'important');
+    cardEl.style.setProperty('box-shadow', 'none', 'important');
 
-    clone.style.cssText = `
-      width: 100%; max-width: 100%; margin: 0;
-      background: ${baseBg};
-      border: none; box-shadow: none; border-radius: 0;
-      position: relative; z-index: 1; padding: 30px;
-    `;
-
-    // 3. Expand tables fully (No scrollbars)
-    const scrollEls = clone.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
+    // 4. Force Tables to Expand (No scrollbars/cropping)
+    const scrollEls = cardEl.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
+    const originalStyles = new Map();
     scrollEls.forEach(el => {
+      originalStyles.set(el, el.getAttribute('style') || '');
       el.style.setProperty('overflow', 'visible', 'important');
       el.style.setProperty('overflow-x', 'visible', 'important');
       if (el.classList.contains('mt-col-section--scroll')) {
@@ -270,30 +266,20 @@ const RSMUI = (() => {
       }
     });
 
-    // 4. MASSIVE, BOLD FONTS FOR RESULTS DATA
-    const header = clone.querySelector('.result-card__header');
-    if(header) header.style.cssText = 'font-size: 1.4rem !important; font-weight: 900 !important; background: transparent !important; border: none !important; margin-bottom: 20px !important;';
+    // 5. TEMPORARY CSS: Make data HUGE, BOLD, and SHARP
+    const tempStyle = document.createElement('style');
+    tempStyle.textContent = `
+      .result-card > * { position: relative; z-index: 2; }
+      .result-card__header { font-size: 1.4rem !important; font-weight: 900 !important; background: transparent !important; border: none !important; margin-bottom: 20px !important; }
+      .detail-table__value, .detail-table__label, .marks-table th, .marks-table td { font-size: 1.15rem !important; font-weight: 800 !important; padding: 12px !important; }
+      .mt-pass, .mt-fail, .mt-bonus, .mt-score { font-size: 1.35rem !important; font-weight: 900 !important; }
+      .rank-card__value { font-size: 1.8rem !important; font-weight: 900 !important; }
+      .rank-card__label { font-size: 1.1rem !important; font-weight: 700 !important; }
+      .rank-banner { font-size: 1.2rem !important; font-weight: 800 !important; padding: 14px !important; }
+    `;
+    document.head.appendChild(tempStyle);
 
-    const tdTh = clone.querySelectorAll('.marks-table th, .marks-table td, .detail-table__value, .detail-table__label');
-    tdTh.forEach(el => {
-       el.style.setProperty('font-size', '1.15rem', 'important');
-       el.style.setProperty('font-weight', '800', 'important');
-       el.style.setProperty('padding', '12px', 'important');
-    });
-
-    const scores = clone.querySelectorAll('.mt-pass, .mt-fail, .mt-bonus, .mt-score');
-    scores.forEach(el => {
-       el.style.setProperty('font-size', '1.35rem', 'important');
-       el.style.setProperty('font-weight', '900', 'important');
-    });
-
-    const ranks = clone.querySelectorAll('.rank-card__value');
-    ranks.forEach(el => {
-       el.style.setProperty('font-size', '1.8rem', 'important');
-       el.style.setProperty('font-weight', '900', 'important');
-    });
-
-    // 5. Inject Faint Logo Watermark (NO Text)
+    // 6. Inject Faint Logo Watermark (Directly into the DOM, behind the text)
     const watermark = document.createElement('img');
     watermark.src = 'logo.jpg';
     watermark.crossOrigin = 'anonymous';
@@ -301,65 +287,69 @@ const RSMUI = (() => {
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      width: 50%;
-      z-index: 0;
+      width: 60%;
+      z-index: 1;
       pointer-events: none;
-      opacity: 0.02; /* Extremely low visibility */
+      opacity: 0.03; /* Extremely low visibility */
     `;
-    clone.insertBefore(watermark, clone.firstChild);
+    cardEl.insertBefore(watermark, cardEl.firstChild);
 
-    // Keep text strictly above the logo
-    Array.from(clone.children).forEach(child => {
-      if (child !== watermark) {
-        child.style.position = 'relative';
-        child.style.zIndex = '2';
-      }
-    });
-
-    // 6. Solid Footer Brand Bar
+    // 7. Footer Brand Bar
     const footerBar = document.createElement('div');
     footerBar.style.cssText = `
       background: rgba(15,118,110,1);
-      color: #ffffff; text-align: center;
-      padding: 16px; font-size: 17px; font-weight: 700;
-      margin: 30px -30px -30px -30px;
+      color: #ffffff;
+      text-align: center;
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 700;
+      margin: 24px -16px -16px -16px;
       font-family: sans-serif;
-      position: relative; z-index: 2;
+      position: relative;
+      z-index: 2;
     `;
     footerBar.textContent = 'RANK SCORE MASTER  ·  rankscoremaster.app';
-    clone.appendChild(footerBar);
+    cardEl.appendChild(footerBar);
 
-    // Mount to DOM
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-
-    // Force wait for the logo image to download before taking the picture
+    // Wait for the logo image to download and fonts to apply
     await new Promise((resolve) => {
       if (watermark.complete) resolve();
       else {
         watermark.onload = resolve;
-        watermark.onerror = resolve; // Proceed even if logo fails
+        watermark.onerror = resolve;
       }
     });
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     let canvas;
     try {
-      // htmlToImage takes perfect 1:1 screenshots using SVG.
-      // pixelRatio: 3 scales it to 2700px for crystal clear quality.
-      canvas = await htmlToImage.toCanvas(wrapper, {
+      // Capture using html-to-image (Pixel ratio 3 creates a high-def 2700px image)
+      canvas = await htmlToImage.toCanvas(cardEl, {
         pixelRatio: 3,
         backgroundColor: baseBg,
-        style: { margin: 0, padding: 0 }
+        width: 900,
+        style: { transform: 'none' }
       });
     } finally {
-      // Destroy the hidden clone
-      wrapper.remove();
+      // 8. Instantly restore everything back to mobile view
+      watermark.remove();
+      footerBar.remove();
+      tempStyle.remove();
+      actionRows.forEach(el => { el.style.display = ''; });
+      cardEl.style.cssText = originalCssText;
+
+      scrollEls.forEach(el => {
+        const orig = originalStyles.get(el);
+        if (orig) el.setAttribute('style', orig);
+        else el.removeAttribute('style');
+      });
     }
 
     return canvas;
-  }
+       }
    
-    
+
+
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
