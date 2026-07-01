@@ -62,6 +62,22 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
+      # ── Install the SDK platform we're compiling against ──────────
+      # GitHub's ubuntu-latest runners ship with an Android SDK that only
+      # has a few platforms pre-installed — compileSdkVersion 35 fails
+      # resource linking (aapt2: "failed to load include path
+      # .../platforms/android-35/android.jar") unless platform 35 is
+      # explicitly installed first.
+      - name: Install Android SDK platform 35
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager -type f 2>/dev/null | sort | tail -n1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found under \$ANDROID_HOME/cmdline-tools ($ANDROID_HOME)"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
       # ── Every build gets a unique, always-increasing versionCode so the
       # Android package installer recognizes each APK as a newer version
       # instead of re-showing the same old one. GITHUB_RUN_NUMBER increments
@@ -116,3 +132,4 @@ jobs:
         with:
           name: RankScoreMaster-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
+          
