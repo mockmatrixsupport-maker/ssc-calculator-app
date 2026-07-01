@@ -22,14 +22,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install dependencies & Capacitor Plugins
+        run: |
+          npm install
 
       # ── Stage the web app into www/ ──────────────────────────────
-      # The site lives at repo root (index.html, css/, js/, data/, logos),
-      # but Capacitor needs a dedicated webDir. We copy everything it
-      # needs into www/ at build time so nothing has to be duplicated
-      # by hand in the repo itself.
       - name: Stage web assets into www/
         run: |
           mkdir -p www
@@ -37,7 +34,7 @@ jobs:
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
           cp -r js www/
-          cp -r data www/
+          cp -r data www/ || true
 
       - name: Add Android platform
         run: npx cap add android
@@ -48,70 +45,32 @@ jobs:
       - name: Sync
         run: npx cap sync android
 
-      # ── API 35 ships an updated resource table format that older
-      # AAPT2 builds (pulled in by older AGP/Gradle) can't parse, causing
-      # "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data".
-      # Pin a newer AAPT2 so resource linking against android-35 works.
-      - name: Pin compatible AAPT2 version for API 35
+      - name: Update Target SDK, Version, and Permissions
         run: |
-          PROPS="android/gradle.properties"
-          if ! grep -q "^android.aapt2Version=" "$PROPS" 2>/dev/null; then
-            echo "android.aapt2Version=8.6.1-11315950" >> "$PROPS"
-          fi
-          echo "--- gradle.properties ---"
-          cat "$PROPS"
+          # Force Android 14 (API 34) compliance for Play Protect
+          sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/variables.gradle
+          sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/variables.gradle
+          
+          # Dynamically bump version code so Play Protect sees this as a fresh update
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          
+          # Inject Storage and Media permissions into AndroidManifest.xml
+          sed -i '/<\/manifest>/i \
+          <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
+          <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
+          <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' android/app/src/main/AndroidManifest.xml
 
       - name: Allow mixed content in WebView
         run: |
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
-          grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
-
-      # ── Permissions needed for the Share / Save-to-gallery buttons ──
-      - name: Add media permissions
-        run: |
-          grep -q 'READ_MEDIA_IMAGES' android/app/src/main/AndroidManifest.xml || \
-            sed -i '0,/<application/s//<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" \/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || \
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      # ── Install the SDK platform we're compiling against ──────────
-      # GitHub's ubuntu-latest runners ship with an Android SDK that only
-      # has a few platforms pre-installed — compileSdkVersion 35 fails
-      # resource linking (aapt2: "failed to load include path
-      # .../platforms/android-35/android.jar") unless platform 35 is
-      # explicitly installed first.
-      - name: Install Android SDK platform 35
-        run: |
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 4 -name sdkmanager -type f 2>/dev/null | sort | tail -n1)
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found under \$ANDROID_HOME/cmdline-tools ($ANDROID_HOME)"
-            exit 1
-          fi
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-          # GitHub runners ship with pre-installed platforms/build-tools that
-          # can be corrupted/stubbed, causing sdkmanager to skip a real
-          # download. Wipe ALL pre-installed platforms and build-tools first
-          # to force a completely clean install of only what we need.
-          rm -rf "$ANDROID_HOME/platforms"
-          rm -rf "$ANDROID_HOME/build-tools"
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
-          # Verify the jar actually downloaded correctly
-          JAR="$ANDROID_HOME/platforms/android-35/android.jar"
-          if [ ! -s "$JAR" ]; then
-            echo "ERROR: android.jar missing or empty after install"
-            exit 1
-          fi
-          echo "android.jar size: $(stat -c%s "$JAR") bytes"
-
-      # ── Every build gets a unique, always-increasing versionCode so the
-      # Android package installer recognizes each APK as a newer version
-      # instead of re-showing the same old one. GITHUB_RUN_NUMBER increments
-      # automatically on every workflow run — no manual bookkeeping needed.
-      - name: Patch release signing config + version + target SDK into build.gradle
-        env:
-          VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: "1.0.${{ github.run_number }}"
+      - name: Patch release signing config into build.gradle
         run: python3 patch_gradle_signing.py
 
       # ── Decode keystore from secret ──────────────────────────────
