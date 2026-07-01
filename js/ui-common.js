@@ -227,9 +227,7 @@ const RSMUI = (() => {
   // image should be identifiable as coming from the app even if it's
   // forwarded around outside it.
   
- 
-
-      async function captureCardImage(cardEl) {
+  async function captureCardImage(cardEl) {
     const html2canvas = await ensureHtml2Canvas();
 
     // 1. Hide action buttons so they aren't in the saved image
@@ -239,6 +237,7 @@ const RSMUI = (() => {
     // 2. Save original styles to restore them instantly later
     const originalCssText = cardEl.style.cssText;
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const baseBg = isDark ? '#131b19' : '#ffffff';
 
     // 3. Force Desktop Mode for crisp, uncropped rendering
     cardEl.style.setProperty('width', '900px', 'important');
@@ -246,6 +245,8 @@ const RSMUI = (() => {
     cardEl.style.setProperty('margin', '0', 'important');
     cardEl.style.setProperty('position', 'relative', 'important');
     cardEl.style.setProperty('overflow', 'hidden', 'important');
+    // Enforcing a solid background prevents the "white wash" anti-aliasing bug
+    cardEl.style.setProperty('background', baseBg, 'important'); 
 
     // 4. Force Tables to Expand (No scrollbars/cropping)
     const scrollEls = cardEl.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
@@ -260,67 +261,56 @@ const RSMUI = (() => {
       }
     });
 
-    // 5. Inject DOM-based Watermark (Stays safely behind text, never washes it out)
+    // 5. TEMPORARY CSS: Make data HUGE, BOLD, and SHARP for the image
+    const tempStyle = document.createElement('style');
+    tempStyle.textContent = `
+      /* Ensure text layers stay above the watermark */
+      .result-card > * { position: relative; z-index: 1; }
+      
+      /* Boost text size and thickness */
+      .result-card__header { font-size: 1.3rem !important; font-weight: 900 !important; }
+      .detail-table__value { font-size: 1.1rem !important; font-weight: 800 !important; color: var(--text-primary) !important; }
+      .detail-table__label { font-size: 0.95rem !important; font-weight: 700 !important; }
+      .marks-table th { font-size: 1.05rem !important; font-weight: 800 !important; }
+      .marks-table td { font-size: 1.2rem !important; font-weight: 800 !important; }
+      
+      /* Make Right/Wrong/Scores pop with heavy fonts */
+      .mt-pass { font-weight: 900 !important; }
+      .mt-fail { font-weight: 900 !important; }
+      .mt-bonus { font-weight: 900 !important; }
+      .mt-score { font-size: 1.25rem !important; font-weight: 900 !important; }
+      
+      /* Massive Rank Data */
+      .rank-card__value { font-size: 1.6rem !important; font-weight: 900 !important; }
+      .rank-card__label { font-size: 1rem !important; font-weight: 700 !important; }
+      .rank-banner { font-size: 1.2rem !important; font-weight: 800 !important; padding: 14px !important; }
+    `;
+    document.head.appendChild(tempStyle);
+
+    // 6. Inject Logo Watermark (NO text watermark, perfectly placed behind everything)
     const watermarkEl = document.createElement('div');
     watermarkEl.style.cssText = `
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 0; left: 0; width: 100%; height: 100%;
       z-index: 0;
       pointer-events: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
+      opacity: ${isDark ? '0.04' : '0.06'};
+      background-image: url('logo.jpg');
+      background-position: center 35%;
+      background-repeat: no-repeat;
+      background-size: 55%;
     `;
+    cardEl.insertBefore(watermarkEl, cardEl.firstChild);
 
-    // 5a. Center Logo Watermark
-    const logoImg = document.createElement('img');
-    logoImg.src = 'logo.jpg';
-    logoImg.crossOrigin = 'anonymous';
-    // multiply removes the white background on light mode.
-    logoImg.style.cssText = `
-      position: absolute;
-      width: 60%;
-      max-width: 500px;
-      opacity: 0.05;
-      mix-blend-mode: ${isDark ? 'screen' : 'multiply'}; 
-    `;
-    watermarkEl.appendChild(logoImg);
-
-    // 5b. Diagonal Text Watermark
-    const textOverlay = document.createElement('div');
-    textOverlay.style.cssText = `
-      position: absolute;
-      width: 200%;
-      height: 200%;
-      transform: rotate(-25deg);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      opacity: 0.04;
-      font-size: 36px;
-      font-weight: 800;
-      color: ${isDark ? '#ffffff' : '#000000'};
-      line-height: 2.5;
-      white-space: pre;
-    `;
-    let textContent = '';
-    for(let i=0; i<15; i++) {
-      textContent += 'RANK SCORE MASTER   RANK SCORE MASTER   RANK SCORE MASTER   RANK SCORE MASTER\n';
-    }
-    textOverlay.textContent = textContent;
-    watermarkEl.appendChild(textOverlay);
-
-    // 5c. Footer Brand Bar
+    // 7. Footer Brand Bar
     const footerBar = document.createElement('div');
     footerBar.style.cssText = `
       background: rgba(15,118,110,1);
       color: #ffffff;
       text-align: center;
-      padding: 10px;
-      font-size: 15px;
-      font-weight: 600;
+      padding: 14px;
+      font-size: 18px;
+      font-weight: 700;
       margin: 24px -16px -16px -16px;
       border-bottom-left-radius: inherit;
       border-bottom-right-radius: inherit;
@@ -329,33 +319,25 @@ const RSMUI = (() => {
       z-index: 2;
     `;
     footerBar.textContent = 'RANK SCORE MASTER  ·  rankscoremaster.app';
-
-    // Attach elements to the DOM safely behind the text
-    cardEl.insertBefore(watermarkEl, cardEl.firstChild);
     cardEl.appendChild(footerBar);
 
-    // Ensure logo is fully loaded before taking the picture
-    await new Promise((resolve) => {
-      if (logoImg.complete) resolve();
-      else {
-        logoImg.onload = resolve;
-        logoImg.onerror = resolve;
-      }
-    });
+    // Give the browser 150ms to apply the heavy fonts and load the background logo
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     let canvas;
     try {
-      // Capture with solid background to prevent the "milky white" anti-aliasing bug
+      // Capture the razor-sharp image
       canvas = await html2canvas(cardEl, {
         scale: 3,
-        backgroundColor: isDark ? '#131b19' : '#ffffff',
+        backgroundColor: baseBg,
         useCORS: true,
         windowWidth: 1000
       });
     } finally {
-      // 6. Instantly restore everything back to mobile view
+      // 8. Instantly restore everything back to mobile view
       watermarkEl.remove();
       footerBar.remove();
+      tempStyle.remove();
       actionRows.forEach(el => { el.style.display = ''; });
       cardEl.style.cssText = originalCssText;
 
@@ -367,10 +349,8 @@ const RSMUI = (() => {
     }
 
     return canvas;
-      }
+  }
    
-       
-
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
