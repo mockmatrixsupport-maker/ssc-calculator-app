@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Railway Score Calculator — Calculate your RRB exam score from the official answer key.">
+<meta name="theme-color" content="#0f766e">
+<title>Railway Score Calculator — Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/result-ui.css">
+<style>
+.page-title-row { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+.page-title-row img { width: 44px; height: 44px; border-radius: var(--r-md); border: 1px solid var(--border-strong); object-fit: cover; }
+.page-title-row h1 { font-size: 1.25rem; }
+.page-title-row p { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+
+.exam-id-tag {
+  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600;
+  color: var(--ink-light); letter-spacing: 0.03em; margin-bottom: 2px;
+}
+
+.results-placeholder { margin-top: var(--sp-6); }
+
+/* ── Keep paired fields on one row even on small phones, RankMitra-style.
+   Overrides the global single-column collapse from style.css by using
+   the higher-specificity #inputCard selector — shrink instead of stack. */
+@media (max-width: 480px) {
+  #inputCard .form-grid-2 { grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+  #inputCard .form-label { font-size: 0.68rem; }
+  #inputCard .form-input, #inputCard .form-select { font-size: 0.74rem; padding: 9px 8px; }
+  #inputCard .form-select-wrap .form-select { padding-right: 22px; }
+  #inputCard .form-select-wrap::after { right: 9px; }
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <a href="index.html" class="app-logo">
+      <img src="logo.jpg" alt="Rank Score Master" class="app-logo__icon">
+      <div class="app-logo__text">
+        <span class="app-logo__name">Rank Score Master</span>
+        <span class="app-logo__tagline">SSC · Railway · Analysis</span>
+      </div>
+    </a>
+    <div class="header-actions">
+      <button class="desktop-toggle" id="desktopToggle" aria-label="Toggle desktop view" title="Toggle desktop view" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="1.5"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </button>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">
+        <svg id="iconDark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg id="iconLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="page-main">
+  <div class="container">
+
+    <a href="index.html" class="btn-back fade-up" style="margin-bottom: var(--sp-5);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to Home
+    </a>
+
+    <div class="page-title-row fade-up fade-up-1">
+      <img src="railway-logo.jpg" alt="Railway">
+      <div>
+        <p class="exam-id-tag hidden" id="examIdTag"></p>
+        <h1 id="pageTitleText">Railway Score Calculator</h1>
+        <p id="examSubtitle">NTPC · Group D · ALP · JE · Technician · Paramedical</p>
+
+      </div>
+    </div>
+
+    <!-- Compact bar shown instead of the form once a result is on screen -->
+    <div class="url-edit-bar hidden" id="urlEditBar">
+      <span class="url-edit-bar__text" id="editBarUrlText"></span>
+      <button type="button" class="url-edit-bar__btn" data-action="edit-url">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Edit URL
+      </button>
+    </div>
+
+    <!-- Input Card -->
+    <div class="card fade-up fade-up-2" id="inputCard">
+      <div class="section-label">Answer Key Details</div>
+
+      <div class="form-group">
+        <label class="form-label">Answer Key URL <span class="required">*</span></label>
+        <input type="text" class="form-input" id="rrbUrl" placeholder="https://rrb.digialm.com/per/.../AssessmentQPHTMLMode1/...html" autocomplete="off">
+        <div class="recent-chips hidden" id="recentChips"></div>
+        <div class="form-hint">Paste the response sheet link from the RRB candidate login</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Exam <span class="required">*</span></label>
+        <div class="form-select-wrap">
+          <select class="form-select" id="examSelect" required>
+            <option value="" disabled selected>Select your exam</option>
+          </select>
+        </div>
+        <div class="form-hint">Marking scheme is applied automatically — no manual entry needed</div>
+      </div>
+
+      <!-- Marking scheme is resolved silently from examSelect in JS and
+           stored in these hidden fields for the score engine; it is no
+           longer shown as a visible card on this page. -->
+      <input type="hidden" id="markingCorrect" value="">
+      <input type="hidden" id="markingWrong" value="">
+
+      <div class="form-grid-2 mt-4">
+        <div class="form-group">
+          <label class="form-label">Category <span class="required">*</span></label>
+          <div class="form-select-wrap">
+            <select class="form-select" id="category" required>
+              <option value="" disabled selected>Select</option>
+              <option value="general">General / UR</option>
+              <option value="obc">OBC</option>
+              <option value="sc">SC</option>
+              <option value="st">ST</option>
+              <option value="ews">EWS</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Horizontal Category</label>
+          <div class="form-select-wrap">
+            <select class="form-select" id="horizontalCategory">
+              <option value="none" selected>None</option>
+              <option value="esm">Ex-Servicemen (ESM)</option>
+              <option value="pwbd-vi">PwBD — VI</option>
+              <option value="pwbd-hi">PwBD — HI</option>
+              <option value="pwbd-oh">PwBD — OH</option>
+              <option value="pwbd-id">PwBD — ID</option>
+              <option value="pwbd-other">PwBD — Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid-2 mt-4">
+        <div class="form-group">
+          <label class="form-label">RRB Zone <span class="required">*</span></label>
+          <div class="form-select-wrap">
+            <select class="form-select" id="rrbZone" required>
+              <option value="" disabled selected>Select</option>
+              <option>Ahmedabad</option><option>Ajmer</option><option>Allahabad</option>
+              <option>Bangalore</option><option>Bhopal</option><option>Bhubaneswar</option>
+              <option>Bilaspur</option><option>Chandigarh</option><option>Chennai</option>
+              <option>Gorakhpur</option><option>Guwahati</option><option>Jammu & Srinagar</option>
+              <option>Kolkata</option><option>Malda</option><option>Mumbai</option>
+              <option>Muzaffarpur</option><option>Patna</option><option>Ranchi</option>
+              <option>Secunderabad</option><option>Siliguri</option><option>Thiruvananthapuram</option>
+            </select>
+          </div>
+          <div class="form-hint">All 21 RRB zones across Indian Railways</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">State / UT <span class="required">*</span></label>
+          <div class="form-select-wrap">
+            <select class="form-select" id="state" required>
+              <option value="" disabled selected>Select</option>
+              <option>Andhra Pradesh</option><option>Arunachal Pradesh</option><option>Assam</option>
+              <option>Bihar</option><option>Chhattisgarh</option><option>Delhi</option><option>Goa</option>
+              <option>Gujarat</option><option>Haryana</option><option>Himachal Pradesh</option>
+              <option>Jharkhand</option><option>Karnataka</option><option>Kerala</option>
+              <option>Madhya Pradesh</option><option>Maharashtra</option><option>Manipur</option>
+              <option>Meghalaya</option><option>Mizoram</option><option>Nagaland</option><option>Odisha</option>
+              <option>Punjab</option><option>Rajasthan</option><option>Sikkim</option><option>Tamil Nadu</option>
+              <option>Telangana</option><option>Tripura</option><option>Uttar Pradesh</option>
+              <option>Uttarakhand</option><option>West Bengal</option><option>Jammu & Kashmir</option>
+              <option>Ladakh</option><option>Chandigarh</option><option>Puducherry</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid-2 mt-4">
+        <div class="form-group">
+          <label class="form-label">Paper Language <span class="required">*</span></label>
+          <div class="form-select-wrap">
+            <select class="form-select" id="language" required>
+              <option value="" disabled selected>Select</option>
+              <option value="english">English</option>
+              <option value="hindi">Hindi</option>
+              <option value="bilingual">Bilingual</option>
+              <option value="regional">Regional</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <label class="checkbox-wrap">
+        <input type="checkbox" id="termsCheck" checked>
+        <span class="checkbox-text">
+          <strong>I accept the terms & conditions.</strong>
+          My answer key data may be used to generate score analysis, rank estimates and aggregate statistics. <a href="#">Read terms</a>
+        </span>
+      </label>
+
+      <button class="btn btn--primary btn--full mt-5" id="fetchBtnRrb">
+        <svg id="fetchIconRrb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        <span id="fetchBtnTextRrb">Fetch & Calculate Score</span>
+      </button>
+
+      <div class="form-hint hidden" id="errorBoxRrb" style="color:var(--fail); margin-top:var(--sp-3); text-align:center;"></div>
+    </div>
+
+    <!-- Results (filled in by score-engine.js) -->
+    <div class="results-placeholder hidden" id="resultsSection">
+    </div>
+
+  </div>
+</main>
+
+<footer class="app-footer">
+  <p>Rank Score Master &copy; 2026 &nbsp;·&nbsp; For educational use only</p>
+</footer>
+
+<script src="js/native-http.js"></script>
+<script src="js/cache.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/fetcher-ssc.js"></script>
+<script src="js/fetcher-rrb.js"></script>
+<script src="js/fetch-router.js"></script>
+<script src="js/parser-ssc.js"></script>
+<script src="js/parser-rrb.js"></script>
+<script src="js/score-engine.js"></script>
+
+<script>
+const html = document.documentElement;
+const toggleBtn = document.getElementById('themeToggle');
+const iconDark = document.getElementById('iconDark');
+const iconLight = document.getElementById('iconLight');
+function applyTheme(t) {
+  html.setAttribute('data-theme', t);
+  localStorage.setItem('rsm-theme', t);
+  iconDark.classList.toggle('hidden', t !== 'dark');
+  iconLight.classList.toggle('hidden', t === 'dark');
+}
+applyTheme(localStorage.getItem('rsm-theme') || 'dark');
+toggleBtn.addEventListener('click', () => applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
+RSMUI.initDesktopToggle(document.getElementById('desktopToggle'));
+
+// No year/phase baked into id or label — these are evergreen exam
+// names. Just edit the correct/wrong numbers in place each cycle if a
+// Railway Recruitment Board changes the marking scheme; nothing else
+// needs touching.
+const RRB_EXAMS = [
+  { id: 'rrb-ntpc-ug-cbt1',    label: 'RRB NTPC (Under Graduate) — CBT I',  correct: 1, wrong: 0.3333 },
+  { id: 'rrb-ntpc-ug-cbt2',    label: 'RRB NTPC (Under Graduate) — CBT II', correct: 1, wrong: 0.3333 },
+  { id: 'rrb-ntpc-grad-cbt1',  label: 'RRB NTPC (Graduate) — CBT I',        correct: 1, wrong: 0.3333 },
+  { id: 'rrb-ntpc-grad-cbt2',  label: 'RRB NTPC (Graduate) — CBT II',       correct: 1, wrong: 0.3333 },
+  { id: 'rrb-groupd',          label: 'RRB Group D',                       correct: 1, wrong: 0.3333 },
+  { id: 'rrb-alp-cbt1',        label: 'RRB ALP — CBT I',                   correct: 1, wrong: 0.3333 },
+  { id: 'rrb-alp-cbt2',        label: 'RRB ALP — CBT II',                  correct: 1, wrong: 0.3333 },
+  { id: 'rrb-je-cbt1',         label: 'RRB JE — CBT I',                    correct: 1, wrong: 0.3333 },
+  { id: 'rrb-je-cbt2',         label: 'RRB JE — CBT II',                   correct: 1, wrong: 0.3333 },
+  { id: 'rrb-technician',      label: 'RRB Technician',                    correct: 1, wrong: 0.3333 },
+  { id: 'rrb-paramedical',     label: 'RRB Paramedical Staff',             correct: 1, wrong: 0.3333 },
+];
+
+const examSelect = document.getElementById('examSelect');
+const examIdTag = document.getElementById('examIdTag');
+const pageTitleText = document.getElementById('pageTitleText');
+const markingCorrect = document.getElementById('markingCorrect');
+const markingWrong = document.getElementById('markingWrong');
+const DEFAULT_TITLE = 'Railway Score Calculator';
+const examSubtitle = document.getElementById('examSubtitle');
+
+RRB_EXAMS.forEach(ex => {
+  const opt = document.createElement('option');
+  opt.value = ex.id;
+  opt.textContent = ex.label;
+  examSelect.appendChild(opt);
+});
+
+  function selectExam(ex) {
+  if (!ex) {
+    markingCorrect.value = '';
+    markingWrong.value = '';
+    examIdTag.textContent = '';
+    examIdTag.classList.add('hidden');
+    pageTitleText.textContent = DEFAULT_TITLE;
+    examSubtitle.classList.remove('hidden');   // show subtitle again
+    return;
+  }
+  markingCorrect.value = ex.correct;
+  markingWrong.value = ex.wrong;
+
+  examIdTag.textContent = ex.id;
+  examIdTag.classList.add('hidden');           // ← keep id tag hidden too
+  pageTitleText.textContent = ex.label.toUpperCase() + ' SCORE CALCULATOR';
+  examSubtitle.classList.add('hidden');        // hide subtitle
+  }
+
+
+examSelect.addEventListener('change', () => {
+  const ex = RRB_EXAMS.find(e => e.id === examSelect.value);
+  selectExam(ex);
+});
+
+// Deep-link support: arriving as rrb-calculator.html?exam=rrb-ntpc-ug-cbt1
+// from the homepage "Latest Answer Keys" list pre-selects that exam and
+// applies its marking scheme automatically, with no manual step.
+const params = new URLSearchParams(window.location.search);
+const examParam = params.get('exam');
+if (examParam) {
+  const match = RRB_EXAMS.find(e => e.id === examParam);
+  if (match) {
+    examSelect.value = match.id;
+    selectExam(match);
+  }
+}
+
+// score-engine.js reads the active marking scheme from the hidden
+// #markingCorrect / #markingWrong fields (set above by selectExam()).
+
+// ── Fetch & Calculate — button-only status, no log feed ──
+const fetchBtnRrb = document.getElementById('fetchBtnRrb');
+const fetchIconRrb = document.getElementById('fetchIconRrb');
+const fetchBtnTextRrb = document.getElementById('fetchBtnTextRrb');
+const errorBoxRrb = document.getElementById('errorBoxRrb');
+const resultsSectionRrb = document.getElementById('resultsSection');
+
+const ORIGINAL_ICON_RRB = fetchIconRrb.outerHTML;
+
+function setBtnStateRrb(state) {
+  errorBoxRrb.classList.add('hidden');
+  switch (state) {
+    case 'fetching':
+      fetchBtnRrb.disabled = true;
+      document.getElementById('fetchIconRrb')?.remove();
+      fetchBtnTextRrb.insertAdjacentHTML('beforebegin', '<span class="btn-spinner" id="fetchIconRrb"></span>');
+      fetchBtnTextRrb.textContent = 'Fetching answer key...';
+      break;
+    case 'parsing':
+      fetchBtnTextRrb.textContent = 'Calculating score...';
+      break;
+    case 'done':
+      document.getElementById('fetchIconRrb')?.remove();
+      fetchBtnTextRrb.insertAdjacentHTML('beforebegin',
+        '<svg class="btn-check" id="fetchIconRrb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>');
+      fetchBtnTextRrb.textContent = 'Done';
+      setTimeout(() => setBtnStateRrb('idle'), 1800);
+      break;
+    case 'idle':
+    default:
+      fetchBtnRrb.disabled = false;
+      document.getElementById('fetchIconRrb')?.remove();
+      fetchBtnTextRrb.insertAdjacentHTML('beforebegin', ORIGINAL_ICON_RRB);
+      fetchBtnTextRrb.textContent = 'Fetch & Calculate Score';
+      break;
+  }
+}
+
+function showErrorRrb(message) {
+  errorBoxRrb.textContent = message;
+  errorBoxRrb.classList.remove('hidden');
+  setBtnStateRrb('idle');
+}
+
+// ── UI context shared with RSMUI (edit bar / recent chips / result-mode) ──
+const RSM_CTX = {
+  inputCard: document.getElementById('inputCard'),
+  editBar: document.getElementById('urlEditBar'),
+  editBarText: document.getElementById('editBarUrlText'),
+  resultsSection: resultsSectionRrb,
+  urlInput: document.getElementById('rrbUrl'),
+  chipsContainer: document.getElementById('recentChips')
+};
+RSMUI.initEditBar(RSM_CTX);
+RSMUI.initRecentChips(RSM_CTX, (pickedUrl) => doFetchRrb(pickedUrl));
+
+async function doFetchRrb(overrideUrl) {
+  const url = (overrideUrl != null ? overrideUrl : document.getElementById('rrbUrl').value).trim();
+  const examId = examSelect.value;
+  const category = document.getElementById('category').value;
+  const zone = document.getElementById('rrbZone').value;
+  const state = document.getElementById('state').value;
+  const language = document.getElementById('language').value;
+  const termsOk = document.getElementById('termsCheck').checked;
+
+  if (!url) return showErrorRrb('Answer key URL daalna zaroori hai.');
+  if (!examId) return showErrorRrb('Exam select karna zaroori hai.');
+  if (!category) return showErrorRrb('Category select karna zaroori hai.');
+  if (!zone) return showErrorRrb('RRB Zone select karna zaroori hai.');
+  if (!state) return showErrorRrb('State select karna zaroori hai.');
+  if (!language) return showErrorRrb('Paper language select karna zaroori hai.');
+  if (!termsOk) return showErrorRrb('Terms & conditions accept karna zaroori hai.');
+
+  resultsSectionRrb.classList.add('hidden');
+  setBtnStateRrb('fetching');
+
+  try {
+    const fetchResult = await RSMFetchRouter.resolve(url, () => {});
+    setBtnStateRrb('parsing');
+
+    if (fetchResult.fromCache && fetchResult.calculatedResult) {
+      RSMScoreEngine.renderInto(resultsSectionRrb, fetchResult.calculatedResult, {
+        url, family: fetchResult.family, fromCache: true, uiCtx: RSM_CTX
+      });
+    } else {
+      const correctMark = parseFloat(markingCorrect.value) || 0;
+      const wrongMark = parseFloat(markingWrong.value) || 0;
+      RSMScoreEngine.run('rrb', fetchResult.parts, correctMark, wrongMark, resultsSectionRrb, url, RSM_CTX);
+    }
+
+    setBtnStateRrb('done');
+    resultsSectionRrb.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    showErrorRrb(e.message || 'Kuch galat ho gaya. Dobara koshish karein.');
+  }
+}
+
+fetchBtnRrb.addEventListener('click', () => doFetchRrb());
+</script>
+
+</body>
+</html>
