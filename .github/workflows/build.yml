@@ -22,11 +22,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install dependencies & Capacitor Plugins
-        run: |
-          npm install
+      - name: Install dependencies
+        run: npm install
 
       # ── Stage the web app into www/ ──────────────────────────────
+      # The site lives at repo root (index.html, css/, js/, data/, logos),
+      # but Capacitor needs a dedicated webDir. We copy everything it
+      # needs into www/ at build time so nothing has to be duplicated
+      # by hand in the repo itself.
       - name: Stage web assets into www/
         run: |
           mkdir -p www
@@ -34,38 +37,33 @@ jobs:
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
           cp -r js www/
-          cp -r data www/ || true
+          cp -r data www/
 
       - name: Add Android platform
         run: npx cap add android
 
       - name: Copy web assets
         run: npx cap copy android
-
       - name: Sync
         run: npx cap sync android
 
-      - name: Update Target SDK, Version, and Permissions
+      # --- ADD THIS NEW STEP ---
+      - name: Update Target SDK and Version
         run: |
           # Force Android 14 (API 34) compliance for Play Protect
           sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/variables.gradle
           sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/variables.gradle
-          
-          # Dynamically bump version code so Play Protect sees this as a fresh update
+          # Dynamically bump version code based on GitHub Actions run number so it installs over the old APK
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
-          
-          # Inject Storage and Media permissions into AndroidManifest.xml
-          sed -i '/<\/manifest>/i \
-          <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
-          <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
-          <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' android/app/src/main/AndroidManifest.xml
+      # -------------------------
 
       - name: Allow mixed content in WebView
+      
+      
         run: |
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
-          grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || \
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -117,3 +115,4 @@ jobs:
         with:
           name: RankScoreMaster-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
+          
