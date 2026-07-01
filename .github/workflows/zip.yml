@@ -1,0 +1,13 @@
+name: Zip Repo
+on: workflow_dispatch
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create zip
+        run: zip -r repo.zip . -x ".git/*"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo-zip
+          path: repo.zip
