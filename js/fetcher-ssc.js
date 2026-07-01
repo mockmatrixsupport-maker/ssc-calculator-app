@@ -12,7 +12,7 @@
 const RSMFetcherSSC = (() => {
 
   const MAX_PARTS = 10;
-  const PART_DELAY_MS = 900; // small pacing delay between parts — avoids tripping bot protection
+  const PART_DELAY_MS = 100; // small pacing delay between parts — avoids tripping bot protection
 
   function matchesSSC(url) {
     return /sscexams\.cbexams\.com/i.test(url);
