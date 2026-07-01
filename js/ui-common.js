@@ -206,20 +206,21 @@ const RSMUI = (() => {
     catch (e) { return null; }
   }
 
-  // ── html2canvas (lazy-loaded) ──
-  let html2canvasPromise = null;
-  function ensureHtml2Canvas() {
-    if (window.html2canvas) return Promise.resolve(window.html2canvas);
-    if (html2canvasPromise) return html2canvasPromise;
-    html2canvasPromise = new Promise((resolve, reject) => {
+  // ── html-to-image (Modern lazy-loaded replacement for html2canvas) ──
+  let htmlToImagePromise = null;
+  function ensureHtmlToImage() {
+    if (window.htmlToImage) return Promise.resolve(window.htmlToImage);
+    if (htmlToImagePromise) return htmlToImagePromise;
+    htmlToImagePromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-      s.onload = () => resolve(window.html2canvas);
-      s.onerror = () => reject(new Error('html2canvas load failed'));
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js';
+      s.onload = () => resolve(window.htmlToImage);
+      s.onerror = () => reject(new Error('html-to-image load failed'));
       document.head.appendChild(s);
     });
-    return html2canvasPromise;
+    return htmlToImagePromise;
   }
+   
 
   // Draws a "RANK SCORE MASTER" watermark onto a captured canvas: a
   // diagonal repeating tile across the whole card (light, unobtrusive)
@@ -227,32 +228,40 @@ const RSMUI = (() => {
   // image should be identifiable as coming from the app even if it's
   // forwarded around outside it.
   
+  
   async function captureCardImage(cardEl) {
-    const html2canvas = await ensureHtml2Canvas();
-
-    // 1. Hide action buttons so they aren't in the saved image
-    const actionRows = cardEl.querySelectorAll('.action-row');
-    actionRows.forEach(el => { el.style.display = 'none'; });
-
-    // 2. Save original styles to restore them instantly later
-    const originalCssText = cardEl.style.cssText;
+    // Load the new superior library
+    const htmlToImage = await ensureHtmlToImage();
+    
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const baseBg = isDark ? '#131b19' : '#ffffff';
+    const textColor = isDark ? '#f1f5f4' : '#14201d';
 
-    // 3. Force Desktop Mode for crisp, uncropped rendering
-    cardEl.style.setProperty('width', '900px', 'important');
-    cardEl.style.setProperty('max-width', '900px', 'important');
-    cardEl.style.setProperty('margin', '0', 'important');
-    cardEl.style.setProperty('position', 'relative', 'important');
-    cardEl.style.setProperty('overflow', 'hidden', 'important');
-    // Enforcing a solid background prevents the "white wash" anti-aliasing bug
-    cardEl.style.setProperty('background', baseBg, 'important'); 
+    // 1. Create a hidden clone to prevent mobile clipping bugs
+    const clone = cardEl.cloneNode(true);
+    
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+      position: absolute; top: -9999px; left: -9999px;
+      width: 900px;
+      background: ${baseBg}; color: ${textColor};
+      padding: 0; margin: 0; box-sizing: border-box;
+    `;
+    
+    // 2. Clean up buttons
+    const actionRows = clone.querySelectorAll('.action-row');
+    actionRows.forEach(el => el.remove());
 
-    // 4. Force Tables to Expand (No scrollbars/cropping)
-    const scrollEls = cardEl.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
-    const originalStyles = new Map();
+    clone.style.cssText = `
+      width: 100%; max-width: 100%; margin: 0;
+      background: ${baseBg};
+      border: none; box-shadow: none; border-radius: 0;
+      position: relative; z-index: 1; padding: 30px;
+    `;
+
+    // 3. Expand tables fully (No scrollbars)
+    const scrollEls = clone.querySelectorAll('.table-scroll, .mt-section-scroll, .mt-col-section--scroll');
     scrollEls.forEach(el => {
-      originalStyles.set(el, el.getAttribute('style') || '');
       el.style.setProperty('overflow', 'visible', 'important');
       el.style.setProperty('overflow-x', 'visible', 'important');
       if (el.classList.contains('mt-col-section--scroll')) {
@@ -261,96 +270,96 @@ const RSMUI = (() => {
       }
     });
 
-    // 5. TEMPORARY CSS: Make data HUGE, BOLD, and SHARP for the image
-    const tempStyle = document.createElement('style');
-    tempStyle.textContent = `
-      /* Ensure text layers stay above the watermark */
-      .result-card > * { position: relative; z-index: 1; }
-      
-      /* Boost text size and thickness */
-      .result-card__header { font-size: 1.3rem !important; font-weight: 900 !important; }
-      .detail-table__value { font-size: 1.1rem !important; font-weight: 800 !important; color: var(--text-primary) !important; }
-      .detail-table__label { font-size: 0.95rem !important; font-weight: 700 !important; }
-      .marks-table th { font-size: 1.05rem !important; font-weight: 800 !important; }
-      .marks-table td { font-size: 1.2rem !important; font-weight: 800 !important; }
-      
-      /* Make Right/Wrong/Scores pop with heavy fonts */
-      .mt-pass { font-weight: 900 !important; }
-      .mt-fail { font-weight: 900 !important; }
-      .mt-bonus { font-weight: 900 !important; }
-      .mt-score { font-size: 1.25rem !important; font-weight: 900 !important; }
-      
-      /* Massive Rank Data */
-      .rank-card__value { font-size: 1.6rem !important; font-weight: 900 !important; }
-      .rank-card__label { font-size: 1rem !important; font-weight: 700 !important; }
-      .rank-banner { font-size: 1.2rem !important; font-weight: 800 !important; padding: 14px !important; }
-    `;
-    document.head.appendChild(tempStyle);
+    // 4. MASSIVE, BOLD FONTS FOR RESULTS DATA
+    const header = clone.querySelector('.result-card__header');
+    if(header) header.style.cssText = 'font-size: 1.4rem !important; font-weight: 900 !important; background: transparent !important; border: none !important; margin-bottom: 20px !important;';
 
-    // 6. Inject Logo Watermark (NO text watermark, perfectly placed behind everything)
-    const watermarkEl = document.createElement('div');
-    watermarkEl.style.cssText = `
+    const tdTh = clone.querySelectorAll('.marks-table th, .marks-table td, .detail-table__value, .detail-table__label');
+    tdTh.forEach(el => {
+       el.style.setProperty('font-size', '1.15rem', 'important');
+       el.style.setProperty('font-weight', '800', 'important');
+       el.style.setProperty('padding', '12px', 'important');
+    });
+
+    const scores = clone.querySelectorAll('.mt-pass, .mt-fail, .mt-bonus, .mt-score');
+    scores.forEach(el => {
+       el.style.setProperty('font-size', '1.35rem', 'important');
+       el.style.setProperty('font-weight', '900', 'important');
+    });
+
+    const ranks = clone.querySelectorAll('.rank-card__value');
+    ranks.forEach(el => {
+       el.style.setProperty('font-size', '1.8rem', 'important');
+       el.style.setProperty('font-weight', '900', 'important');
+    });
+
+    // 5. Inject Faint Logo Watermark (NO Text)
+    const watermark = document.createElement('img');
+    watermark.src = 'logo.jpg';
+    watermark.crossOrigin = 'anonymous';
+    watermark.style.cssText = `
       position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 50%;
       z-index: 0;
       pointer-events: none;
-      opacity: ${isDark ? '0.04' : '0.06'};
-      background-image: url('logo.jpg');
-      background-position: center 35%;
-      background-repeat: no-repeat;
-      background-size: 55%;
+      opacity: 0.02; /* Extremely low visibility */
     `;
-    cardEl.insertBefore(watermarkEl, cardEl.firstChild);
+    clone.insertBefore(watermark, clone.firstChild);
 
-    // 7. Footer Brand Bar
+    // Keep text strictly above the logo
+    Array.from(clone.children).forEach(child => {
+      if (child !== watermark) {
+        child.style.position = 'relative';
+        child.style.zIndex = '2';
+      }
+    });
+
+    // 6. Solid Footer Brand Bar
     const footerBar = document.createElement('div');
     footerBar.style.cssText = `
       background: rgba(15,118,110,1);
-      color: #ffffff;
-      text-align: center;
-      padding: 14px;
-      font-size: 18px;
-      font-weight: 700;
-      margin: 24px -16px -16px -16px;
-      border-bottom-left-radius: inherit;
-      border-bottom-right-radius: inherit;
+      color: #ffffff; text-align: center;
+      padding: 16px; font-size: 17px; font-weight: 700;
+      margin: 30px -30px -30px -30px;
       font-family: sans-serif;
-      position: relative;
-      z-index: 2;
+      position: relative; z-index: 2;
     `;
     footerBar.textContent = 'RANK SCORE MASTER  ·  rankscoremaster.app';
-    cardEl.appendChild(footerBar);
+    clone.appendChild(footerBar);
 
-    // Give the browser 150ms to apply the heavy fonts and load the background logo
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Mount to DOM
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    // Force wait for the logo image to download before taking the picture
+    await new Promise((resolve) => {
+      if (watermark.complete) resolve();
+      else {
+        watermark.onload = resolve;
+        watermark.onerror = resolve; // Proceed even if logo fails
+      }
+    });
 
     let canvas;
     try {
-      // Capture the razor-sharp image
-      canvas = await html2canvas(cardEl, {
-        scale: 3,
+      // htmlToImage takes perfect 1:1 screenshots using SVG.
+      // pixelRatio: 3 scales it to 2700px for crystal clear quality.
+      canvas = await htmlToImage.toCanvas(wrapper, {
+        pixelRatio: 3,
         backgroundColor: baseBg,
-        useCORS: true,
-        windowWidth: 1000
+        style: { margin: 0, padding: 0 }
       });
     } finally {
-      // 8. Instantly restore everything back to mobile view
-      watermarkEl.remove();
-      footerBar.remove();
-      tempStyle.remove();
-      actionRows.forEach(el => { el.style.display = ''; });
-      cardEl.style.cssText = originalCssText;
-
-      scrollEls.forEach(el => {
-        const orig = originalStyles.get(el);
-        if (orig) el.setAttribute('style', orig);
-        else el.removeAttribute('style');
-      });
+      // Destroy the hidden clone
+      wrapper.remove();
     }
 
     return canvas;
   }
    
+    
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
