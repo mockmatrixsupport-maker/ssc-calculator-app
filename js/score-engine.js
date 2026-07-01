@@ -291,7 +291,7 @@ const RSMScoreEngine = (() => {
 
     containerEl.classList.remove('hidden');
 
-    if (window.RSMUI) {
+    if (typeof RSMUI !== 'undefined') {
       const cardEl = containerEl.querySelector('.result-card');
       RSMUI.attachResultActions(cardEl, meta.uiCtx || {}, { url: meta.url, family: meta.family });
       if (meta.uiCtx) RSMUI.enterResultMode(meta.uiCtx, meta.url);
@@ -334,3 +334,4 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
