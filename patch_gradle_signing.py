@@ -41,9 +41,7 @@ SIGNING_BLOCK = """
 
 # Current-generation API level. Google Play requires new/updated apps to
 # target at least this level (raised roughly once a year) — keep this in
-# sync with Play's latest requirement, AND with the targetSdkVersion set
-# earlier in the workflow yml (they must match or this script will
-# silently override that step).
+# sync with Play's latest requirement.
 TARGET_SDK = "34"
 
 
@@ -126,3 +124,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+   
