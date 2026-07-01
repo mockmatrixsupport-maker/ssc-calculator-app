@@ -21,7 +21,7 @@
 const RSMCache = (() => {
   const PREFIX = 'rsm-cache:';
   const FORM_PREFIX = 'rsm-formfields:'; // separate namespace: last-used form selections per URL
-  const VERSION = 1; // bump this if cached schema shape changes — invalidates old entries
+  const VERSION = 4; // bump this if cached schema shape changes — invalidates old entries
   const MAX_ENTRIES = 40; // keep storage bounded on low-end phones
   const RECENT_DEFAULT = 3;
 
