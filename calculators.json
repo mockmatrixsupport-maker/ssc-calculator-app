@@ -1,0 +1,91 @@
+[
+  {
+    "id": "ssc",
+    "title": "SSC Exams Calculator",
+    "tagline": "CGL · CHSL · CPO · GD · MTS · JE · Steno · Selection Post · JHT",
+    "cardSub": "CGL · CHSL · GD · CPO · MTS",
+    "logo": "ssc-logo.jpg",
+    "examsFile": "data/exams-ssc.json",
+    "urlFieldLabel": "Answer Key URL",
+    "urlPlaceholder": "https://sscexams.cbexams.com/.../ViewCandResponse.aspx?EncKey=...",
+    "urlHint": "Paste the link from the official SSC response sheet page",
+    "hasZone": false,
+    "zones": [],
+    "categories": [
+      { "value": "general", "label": "General / UR" },
+      { "value": "obc", "label": "OBC" },
+      { "value": "sc", "label": "SC" },
+      { "value": "st", "label": "ST" },
+      { "value": "ews", "label": "EWS" }
+    ],
+    "horizontalCategories": [
+      { "value": "none", "label": "None" },
+      { "value": "esm", "label": "Ex-Servicemen (ESM)" },
+      { "value": "pwbd-vi", "label": "PwBD — VI" },
+      { "value": "pwbd-hi", "label": "PwBD — HI" },
+      { "value": "pwbd-oh", "label": "PwBD — OH" },
+      { "value": "pwbd-id", "label": "PwBD — ID" },
+      { "value": "pwbd-other", "label": "PwBD — Other" }
+    ],
+    "languages": [
+      { "value": "english", "label": "English" },
+      { "value": "hindi", "label": "Hindi" },
+      { "value": "bilingual", "label": "Bilingual" },
+      { "value": "regional", "label": "Regional" }
+    ],
+    "states": [
+      "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Delhi","Goa",
+      "Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala",
+      "Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha",
+      "Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh",
+      "Uttarakhand","West Bengal","Jammu & Kashmir","Ladakh","Chandigarh","Puducherry"
+    ]
+  },
+  {
+    "id": "rrb",
+    "title": "Railway Exams Calculator",
+    "tagline": "NTPC · Group D · ALP · JE · Technician · Paramedical",
+    "cardSub": "NTPC · Group D · ALP · JE",
+    "logo": "railway-logo.jpg",
+    "examsFile": "data/exams-rrb.json",
+    "urlFieldLabel": "Answer Key URL",
+    "urlPlaceholder": "https://rrb.digialm.com/per/.../AssessmentQPHTMLMode1/...html",
+    "urlHint": "Paste the link from the official RRB response sheet page",
+    "hasZone": true,
+    "zones": [
+      "Ahmedabad","Ajmer","Allahabad","Bangalore","Bhopal","Bhubaneswar","Bilaspur",
+      "Chandigarh","Chennai","Gorakhpur","Guwahati","Jammu & Srinagar","Kolkata",
+      "Malda","Mumbai","Muzaffarpur","Patna","Ranchi","Secunderabad","Siliguri",
+      "Thiruvananthapuram"
+    ],
+    "categories": [
+      { "value": "general", "label": "General / UR" },
+      { "value": "obc", "label": "OBC" },
+      { "value": "sc", "label": "SC" },
+      { "value": "st", "label": "ST" },
+      { "value": "ews", "label": "EWS" }
+    ],
+    "horizontalCategories": [
+      { "value": "none", "label": "None" },
+      { "value": "esm", "label": "Ex-Servicemen (ESM)" },
+      { "value": "pwbd-vi", "label": "PwBD — VI" },
+      { "value": "pwbd-hi", "label": "PwBD — HI" },
+      { "value": "pwbd-oh", "label": "PwBD — OH" },
+      { "value": "pwbd-id", "label": "PwBD — ID" },
+      { "value": "pwbd-other", "label": "PwBD — Other" }
+    ],
+    "languages": [
+      { "value": "english", "label": "English" },
+      { "value": "hindi", "label": "Hindi" },
+      { "value": "bilingual", "label": "Bilingual" },
+      { "value": "regional", "label": "Regional" }
+    ],
+    "states": [
+      "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Delhi","Goa",
+      "Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala",
+      "Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha",
+      "Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh",
+      "Uttarakhand","West Bengal","Jammu & Kashmir","Ladakh","Chandigarh","Puducherry"
+    ]
+  }
+]
