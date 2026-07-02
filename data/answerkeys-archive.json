@@ -1,0 +1,10 @@
+[
+  { "family": "ssc", "examId": "ssc-gd", "label": "SSC GD Constable — Answer Key Out", "badge": "New", "active": true },
+  { "family": "rrb", "examId": "rrb-ntpc-ug-cbt1", "label": "RRB NTPC (UG) — CBT I — Answer Key Out", "active": true },
+  { "family": "ssc", "examId": "ssc-cgl-tier1", "label": "SSC CGL — Tier I — Answer Key Out", "active": true },
+  { "family": "rrb", "examId": "rrb-groupd", "label": "RRB Group D — Answer Key Out", "active": true },
+  { "family": "ssc", "examId": "ssc-chsl-tier1", "label": "SSC CHSL — Tier I — Answer Key Out", "active": true },
+  { "family": "rrb", "examId": "rrb-alp-cbt1", "label": "RRB ALP — CBT I — Answer Key Out", "active": true },
+  { "family": "ssc", "examId": "ssc-cpo-tier1", "label": "SSC CPO — Paper I — Answer Key Out", "active": false },
+  { "family": "rrb", "examId": "rrb-je-cbt1", "label": "RRB JE — CBT I — Answer Key Out", "active": false }
+]

@@ -1,0 +1,6 @@
+[
+  { "family": "ssc", "examId": "ssc-gd", "label": "SSC GD Constable — Answer Key Out", "badge": "New", "active": true },
+  { "family": "rrb", "examId": "rrb-ntpc-ug-cbt1", "label": "RRB NTPC (UG) — CBT I — Answer Key Out", "active": true },
+  { "family": "ssc", "examId": "ssc-cgl-tier1", "label": "SSC CGL — Tier I — Answer Key Out", "active": true },
+  { "family": "rrb", "examId": "rrb-groupd", "label": "RRB Group D — Answer Key Out", "active": true }
+]

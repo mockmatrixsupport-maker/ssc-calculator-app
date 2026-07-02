@@ -1,0 +1,13 @@
+[
+  { "id": "rrb-ntpc-ug-cbt1",   "title": "RRB NTPC (Under Graduate) — CBT I",  "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-ntpc-ug-cbt2",   "title": "RRB NTPC (Under Graduate) — CBT II", "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-ntpc-grad-cbt1", "title": "RRB NTPC (Graduate) — CBT I",        "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-ntpc-grad-cbt2", "title": "RRB NTPC (Graduate) — CBT II",       "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-groupd",         "title": "RRB Group D",                       "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-alp-cbt1",       "title": "RRB ALP — CBT I",                   "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-alp-cbt2",       "title": "RRB ALP — CBT II",                  "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-je-cbt1",        "title": "RRB JE — CBT I",                    "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-je-cbt2",        "title": "RRB JE — CBT II",                   "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-technician",     "title": "RRB Technician",                    "correct": 1, "wrong": 0.3333 },
+  { "id": "rrb-paramedical",    "title": "RRB Paramedical Staff",             "correct": 1, "wrong": 0.3333 }
+]
