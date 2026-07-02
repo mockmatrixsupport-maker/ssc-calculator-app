@@ -29,7 +29,8 @@ jobs:
       - name: Stage web assets into www/
         run: |
           mkdir -p www
-          cp index.html ssc-calculator.html rrb-calculator.html www/
+          cp index.html calculator.html www/
+          cp calculators.json manifest.json www/
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
           cp -r js www/
@@ -115,4 +116,3 @@ jobs:
         with:
           name: RankScoreMaster-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
-          
