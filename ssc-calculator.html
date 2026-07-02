@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -233,7 +233,7 @@ function applyTheme(t) {
   iconDark.classList.toggle('hidden', t !== 'dark');
   iconLight.classList.toggle('hidden', t === 'dark');
 }
-applyTheme(localStorage.getItem('rsm-theme') || 'dark');
+applyTheme(localStorage.getItem('rsm-theme') || 'light');
 toggleBtn.addEventListener('click', () => applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
 
 // No year/phase baked into id or label — these are evergreen exam
