@@ -13,8 +13,8 @@
   'use strict';
 
   // ── EDIT THESE to point at your repo ──────────────────────────
-  var GH_USER   = 'YOUR_GITHUB_USERNAME';
-  var GH_REPO   = 'YOUR_REPO_NAME';
+  var GH_USER   = 'mockmatrixsupport-maker';
+  var GH_REPO   = 'ssc-calculator-app';
   var GH_BRANCH = 'main';
   // ───────────────────────────────────────────────────────────────
 
@@ -120,3 +120,4 @@
     }
   };
 })();
+
