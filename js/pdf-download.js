@@ -1,54 +1,11 @@
 /* ═══════════════════════════════════════════════════
    RANK SCORE MASTER — pdf-download.js
-   Extraction & Re-templating engine for SSC & RRB 
+   Native Print Engine with Copiable Text
 ═══════════════════════════════════════════════════ */
 
 const RSMPdfDownload = (() => {
 
-  const HTML2PDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-  const PDFLIB_URL   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
-
-  const SCRIPT_LOAD_TIMEOUT_MS = 25000; 
   const IMAGE_FETCH_TIMEOUT_MS = 12000; 
-  const PART_TIMEOUT_MS = 90000;        
-
-  // Strict width for perfect A4 scaling
-  const RENDER_WIDTH = 1000; 
-  const CANVAS_SCALE = 1.5;
-
-  let html2pdfLoading = null;
-  let pdfLibLoading = null;
-
-  function withTimeout(promise, ms, label) {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s — check your internet connection and try again`)), ms);
-    });
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-  }
-
-  function loadScript(src, label) {
-    const p = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Could not load ' + label));
-      document.head.appendChild(s);
-    });
-    return withTimeout(p, SCRIPT_LOAD_TIMEOUT_MS, `Loading ${label}`);
-  }
-
-  function ensureHtml2Pdf() {
-    if (typeof window.html2pdf !== 'undefined') return Promise.resolve();
-    if (!html2pdfLoading) html2pdfLoading = loadScript(HTML2PDF_URL, 'PDF engine').catch(e => { html2pdfLoading = null; throw e; });
-    return html2pdfLoading;
-  }
-  
-  function ensurePdfLib() {
-    if (typeof window.PDFLib !== 'undefined') return Promise.resolve();
-    if (!pdfLibLoading) pdfLibLoading = loadScript(PDFLIB_URL, 'PDF merge engine').catch(e => { pdfLibLoading = null; throw e; });
-    return pdfLibLoading;
-  }
 
   function isNativeApp() {
     try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
@@ -58,18 +15,6 @@ const RSMPdfDownload = (() => {
   function nativePlugin(name) {
     try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]) || null; }
     catch (e) { return null; }
-  }
-
-  function safeFilename(base) {
-    return (base || 'result').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'result';
-  }
-
-  function deriveFilenameBase(url, family) {
-    try {
-      const last = (url || '').split('?')[0].split('/').filter(Boolean).pop();
-      if (last && last.replace(/\.\w+$/, '').length > 3) return last.replace(/\.\w+$/, '');
-    } catch (e) { }
-    return `${family || 'exam'}-result`;
   }
 
   function deriveOrigin(url) {
@@ -85,6 +30,7 @@ const RSMPdfDownload = (() => {
     return `image/${ext}`;
   }
 
+  // Uses Capacitor bypass to securely fetch protected images
   async function fetchImageAsDataUri(url, referer) {
     const work = (async () => {
       const CapacitorHttp = nativePlugin('CapacitorHttp');
@@ -111,58 +57,42 @@ const RSMPdfDownload = (() => {
       });
     })();
     try {
-      return await withTimeout(work, IMAGE_FETCH_TIMEOUT_MS, 'Image fetch');
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), IMAGE_FETCH_TIMEOUT_MS);
+      });
+      return await Promise.race([work, timeout]).finally(() => clearTimeout(timer));
     } catch (e) {
       return null;
     }
   }
 
-  async function embedImages(doc, referer) {
-    const imgs = Array.from(doc.querySelectorAll('img'));
-    await Promise.all(imgs.map(async img => {
-      const absoluteUrl = img.src; 
-      if (!absoluteUrl || absoluteUrl.startsWith('data:')) return;
-      const dataUri = await fetchImageAsDataUri(absoluteUrl, referer);
-      if (dataUri) img.src = dataUri;
-      else img.removeAttribute('src');
-    }));
-  }
-
-  // ═══════════════ THE NEW DATA EXTRACTOR ═══════════════
-  // This takes the dirty SSC/RRB HTML and builds a clean template
-  function rebuildCleanHtml(rawHtml, baseHref) {
+  // ════════════ THE HTML EXTRACTOR ════════════
+  // Extracts only the clean data from the messy SSC/RRB source
+  function extractCleanContent(rawHtml, isFirstPart) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(rawHtml, 'text/html');
 
-    // Remove garbage
+    // Remove watermark garbage
     doc.querySelectorAll('.watermark-container, .watermark-text, #lblWatermark, script, noscript').forEach(el => el.remove());
 
-    // Create the clean container (similar to your Python script's logic)
-    const cleanBody = document.createElement('div');
-    cleanBody.style.fontFamily = 'Arial, sans-serif';
-    cleanBody.style.width = RENDER_WIDTH + 'px';
-    cleanBody.style.margin = '0';
-    cleanBody.style.padding = '20px';
-    cleanBody.style.background = '#fff';
-    cleanBody.style.color = '#000';
+    const wrapper = document.createElement('div');
 
-    // 1. Extract Candidate Header
-    let candInfo = doc.querySelector('.main-info-pnl'); 
-    if (!candInfo) { // SSC fallback
-        candInfo = Array.from(doc.querySelectorAll('table')).find(t => t.textContent.includes('Candidate Name') || t.textContent.includes('Roll No'));
-    }
-    if (candInfo) {
-        const header = candInfo.cloneNode(true);
-        header.style.width = '100%';
-        header.style.marginBottom = '30px';
-        header.style.borderCollapse = 'collapse';
-        cleanBody.appendChild(header);
+    // Only extract Candidate details if this is the very first part
+    if (isFirstPart) {
+        let candInfo = doc.querySelector('.main-info-pnl') || 
+                       Array.from(doc.querySelectorAll('table')).find(t => t.textContent.includes('Candidate Name') || t.textContent.includes('Roll No'));
+        if (candInfo) {
+            const header = candInfo.cloneNode(true);
+            header.style.marginBottom = '30px';
+            wrapper.appendChild(header);
+        }
     }
 
-    // 2. Extract Questions cleanly
+    // Extract questions
     let questions = Array.from(doc.querySelectorAll('.question-pnl')); // RRB
     if (questions.length === 0) {
-        // SSC Extract: Find tables that contain "Q.No"
+        // SSC Extract
         const tds = Array.from(doc.querySelectorAll('td')).filter(td => td.textContent.includes('Q.No'));
         const sscTables = new Set();
         tds.forEach(td => {
@@ -172,99 +102,34 @@ const RSMPdfDownload = (() => {
         questions = Array.from(sscTables);
     }
 
-    // Put extracted questions into the clean body
-    if (questions.length > 0) {
-        questions.forEach(q => {
-            const qClone = q.cloneNode(true);
-            qClone.style.width = '100%';
-            qClone.style.marginBottom = '25px';
-            qClone.style.pageBreakInside = 'avoid';
-            
-            if (qClone.tagName.toLowerCase() === 'table') {
-                qClone.style.borderCollapse = 'collapse';
-                qClone.style.tableLayout = 'auto';
-            }
-            cleanBody.appendChild(qClone);
-        });
-    } else {
-        // Fallback if extremely strange layout
-        cleanBody.innerHTML = doc.body.innerHTML;
-    }
+    questions.forEach(q => {
+        const qClone = q.cloneNode(true);
+        qClone.style.marginBottom = '25px';
+        qClone.style.pageBreakInside = 'avoid';
+        wrapper.appendChild(qClone);
+    });
 
-    // 3. NUCLEAR DOM CLEANUP ON THE EXTRACTED TEMPLATE
-    // Remove all <center> tags entirely
-    cleanBody.querySelectorAll('center').forEach(c => {
+    // Nuclear Layout Cleanup
+    wrapper.querySelectorAll('center').forEach(c => {
         const frag = document.createDocumentFragment();
         while (c.firstChild) frag.appendChild(c.firstChild);
         c.parentNode.replaceChild(frag, c);
     });
 
-    // Strip every legacy layout attribute that ruins html2canvas
-    cleanBody.querySelectorAll('*').forEach(el => {
+    wrapper.querySelectorAll('*').forEach(el => {
         el.removeAttribute('width');
         el.removeAttribute('height');
         el.removeAttribute('align');
-        el.removeAttribute('valign');
         el.style.width = '';
-        el.style.height = '';
-        el.style.minWidth = '';
         el.style.maxWidth = '100%'; 
-        
-        // Force text wrapping
-        if(['TD', 'TH', 'DIV', 'SPAN', 'P'].includes(el.tagName)) {
-            el.style.wordBreak = 'break-word';
-            el.style.whiteSpace = 'normal';
-        }
     });
 
-    // Force tables to behave
-    cleanBody.querySelectorAll('table').forEach(t => {
+    wrapper.querySelectorAll('table').forEach(t => {
         t.style.width = '100%';
         t.style.borderCollapse = 'collapse';
-        t.style.tableLayout = 'fixed';
     });
 
-    // Fix images
-    cleanBody.querySelectorAll('img').forEach(img => {
-        img.style.maxWidth = '100%';
-        img.style.height = 'auto';
-        img.style.display = 'block';
-    });
-
-    // Add Base Href for image fetching
-    const baseTag = baseHref ? `<base href="${baseHref}">` : '';
-
-    return `<!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        ${baseTag}
-      </head>
-      <body style="margin:0; padding:0; background:#fff;">
-        ${cleanBody.outerHTML}
-      </body>
-    </html>`;
-  }
-  // ═════════════════════════════════════════════════════
-
-  function bytesToBase64(bytes) {
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-    }
-    return btoa(binary);
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return wrapper.innerHTML;
   }
 
   function notify(msg, isError) {
@@ -287,114 +152,6 @@ const RSMPdfDownload = (() => {
     }
   }
 
-  async function deliverPdf(bytes, filename) {
-    if (isNativeApp()) {
-      try {
-        const Filesystem = nativePlugin('Filesystem');
-        if (Filesystem) {
-          const base64Data = bytesToBase64(bytes);
-          await Filesystem.writeFile({ path: filename, data: base64Data, directory: 'CACHE', recursive: true });
-          const uriResult = await Filesystem.getUri({ path: filename, directory: 'CACHE' });
-          const Share = nativePlugin('Share');
-          if (Share) {
-            await Share.share({
-              title: 'Save PDF',
-              text: 'Your Rank Score Master result PDF',
-              files: [uriResult.uri],
-              dialogTitle: 'Save / Share PDF'
-            });
-            notify('Choose "Save to Files" (or Drive) in the share sheet to keep this PDF');
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Native PDF delivery failed, falling back to browser download:', e);
-      }
-    }
-
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    try {
-      const file = new File([blob], filename, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'My Result PDF' });
-        return;
-      }
-    } catch (e) { }
-    downloadBlob(blob, filename);
-    notify('PDF downloaded');
-  }
-
-  function renderPartToIframe(html, baseHref, referer) {
-    return new Promise((resolve, reject) => {
-      // 1. Convert dirty HTML to clean, extracted template
-      const cleanHtml = rebuildCleanHtml(html, baseHref);
-
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.left = '-99999px';
-      iframe.style.top = '0';
-      iframe.style.width = RENDER_WIDTH + 'px'; 
-      iframe.style.height = '100px';
-      iframe.style.border = '0';
-      iframe.setAttribute('aria-hidden', 'true');
-      document.body.appendChild(iframe);
-
-      iframe.onload = async () => {
-        try {
-          const doc = iframe.contentDocument;
-          
-          // Fetch images via custom bypass natively
-          await embedImages(doc, referer); 
-
-          const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 800);
-          iframe.style.height = h + 'px';
-          
-          resolve({ iframe });
-        } catch (e) {
-          iframe.remove();
-          reject(e);
-        }
-      };
-      iframe.onerror = () => { iframe.remove(); reject(new Error('Could not render part')); };
-      iframe.srcdoc = cleanHtml; // Feed the extracted HTML to the iframe
-    });
-  }
-
-  function partToPdfArrayBuffer(html, baseHref, referer) {
-    const work = renderPartToIframe(html, baseHref, referer).then(({ iframe }) => {
-      const body = iframe.contentDocument.body;
-      const opt = {
-        margin: [10, 8, 10, 8], 
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: {
-          scale: CANVAS_SCALE, // Clean HTML scales perfectly now
-          useCORS: true,
-          allowTaint: true,
-          windowWidth: RENDER_WIDTH,
-          width: RENDER_WIDTH,       
-          logging: false,
-          imageTimeout: 0 
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      return window.html2pdf().set(opt).from(body).outputPdf('arraybuffer')
-        .then(buf => { iframe.remove(); return buf; })
-        .catch(err => { iframe.remove(); throw err; });
-    });
-    return withTimeout(work, PART_TIMEOUT_MS, 'Rendering this part');
-  }
-
-  async function mergeBuffers(buffers) {
-    const { PDFDocument } = window.PDFLib;
-    const merged = await PDFDocument.create();
-    for (const buf of buffers) {
-      const src = await PDFDocument.load(buf);
-      const pages = await merged.copyPages(src, src.getPageIndices());
-      pages.forEach(p => merged.addPage(p));
-    }
-    return merged.save();
-  }
-
   function sortPartKeys(parts) {
     return Object.keys(parts).sort((a, b) => {
       const na = parseInt(a.replace(/\D/g, ''), 10) || 0;
@@ -403,50 +160,99 @@ const RSMPdfDownload = (() => {
     });
   }
 
-  async function buildAndDeliver(parts, url, family, btn) {
-    await ensureHtml2Pdf();
-    const baseHref = deriveBaseHref(url);
+  // ════════════ MAIN GENERATOR ════════════
+  async function handlePdfClick(btn, data) {
+    const { parts, url } = data || {};
+    if (!parts || !Object.keys(parts).length) {
+      notify('Result HTML isn’t available for PDF yet — please re-fetch this result.', true);
+      return;
+    }
+
+    setButtonBusy(btn, true, 'Preparing Document...');
     const referer = deriveOrigin(url);
     const partKeys = sortPartKeys(parts);
-    const filenameBase = deriveFilenameBase(url, family);
 
-    setButtonBusy(btn, true, partKeys.length > 1
-      ? `Rendering ${partKeys.length} parts...`
-      : 'Generating PDF...');
-
-    const buffers = await Promise.all(
-      partKeys.map(key => partToPdfArrayBuffer(parts[key], baseHref, referer))
-    );
-
-    if (buffers.length === 1) {
-      await deliverPdf(new Uint8Array(buffers[0]), `${safeFilename(filenameBase)}.pdf`);
-      return;
-    }
-
-    setButtonBusy(btn, true, 'Merging parts...');
-    await ensurePdfLib();
-    const merged = await mergeBuffers(buffers);
-    await deliverPdf(merged, `${safeFilename(filenameBase)}.pdf`);
-  }
-
-  async function handlePdfClick(btn, data) {
-    const { parts, family, url } = data || {};
-    if (!parts || !Object.keys(parts).length) {
-      notify('Result HTML isn’t available for PDF yet — please re-fetch this result and try again.', true);
-      return;
-    }
-
-    setButtonBusy(btn, true, 'Generating PDF...');
     try {
-      await buildAndDeliver(parts, url, family, btn);
+      // 1. Extract and combine all parts into one long clean HTML string
+      let combinedHtml = '';
+      for (let i = 0; i < partKeys.length; i++) {
+         const rawHtml = parts[partKeys[i]];
+         combinedHtml += extractCleanContent(rawHtml, i === 0);
+      }
+
+      // 2. Wrap it in standard print CSS
+      const finalDocumentHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; color: #000; background: #fff; }
+          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          td, th { padding: 5px; word-wrap: break-word; }
+          img { max-width: 100%; height: auto; display: block; }
+          .question-pnl, table[cellpadding="8"] { page-break-inside: avoid; margin-bottom: 25px; }
+        </style>
+      </head>
+      <body>
+        ${combinedHtml}
+      </body>
+      </html>
+      `;
+
+      // 3. Create a hidden print iframe
+      const printIframe = document.createElement('iframe');
+      printIframe.style.position = 'fixed';
+      printIframe.style.right = '0';
+      printIframe.style.bottom = '0';
+      printIframe.style.width = '0';
+      printIframe.style.height = '0';
+      printIframe.style.border = '0';
+      document.body.appendChild(printIframe);
+
+      const doc = printIframe.contentWindow.document;
+      doc.open();
+      doc.write(finalDocumentHtml);
+      doc.close();
+
+      setButtonBusy(btn, true, 'Fetching Images securely...');
+
+      // 4. Fetch all images inside the iframe and convert to base64
+      const imgs = Array.from(doc.querySelectorAll('img'));
+      await Promise.all(imgs.map(async img => {
+        const absoluteUrl = img.src; 
+        if (!absoluteUrl || absoluteUrl.startsWith('data:')) return;
+        const dataUri = await fetchImageAsDataUri(absoluteUrl, referer);
+        if (dataUri) img.src = dataUri;
+        else img.style.display = 'none'; // hide broken images
+      }));
+
+      // 5. Trigger the Native Print Spooler (Allows saving as true PDF)
+      setButtonBusy(btn, true, 'Opening PDF...');
+      
+      // Short delay to ensure browser paints the DOM
+      setTimeout(() => {
+        printIframe.contentWindow.focus();
+        printIframe.contentWindow.print();
+        
+        setButtonBusy(btn, false);
+        
+        // Clean up the iframe after a minute so the spooler has time to catch it
+        setTimeout(() => {
+            if (document.body.contains(printIframe)) {
+                document.body.removeChild(printIframe);
+            }
+        }, 60000);
+      }, 500);
+
     } catch (e) {
       console.error('PDF generation failed:', e);
-      notify(e && e.message ? e.message : 'PDF banane mein error aa gaya. Dobara try karein.', true);
-    } finally {
+      notify('An error occurred while generating the PDF.', true);
       setButtonBusy(btn, false);
     }
   }
 
   return { handlePdfClick };
 })();
-         
+
