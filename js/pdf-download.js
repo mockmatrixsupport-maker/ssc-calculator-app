@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════
    RANK SCORE MASTER — pdf-download.js
-   Native Print Engine with Copiable Text
+   Native Capacitor Print Engine (Zero White Space, Copiable Text)
 ═══════════════════════════════════════════════════ */
 
 const RSMPdfDownload = (() => {
@@ -68,7 +68,6 @@ const RSMPdfDownload = (() => {
   }
 
   // ════════════ THE HTML EXTRACTOR ════════════
-  // Extracts only the clean data from the messy SSC/RRB source
   function extractCleanContent(rawHtml, isFirstPart) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(rawHtml, 'text/html');
@@ -78,7 +77,6 @@ const RSMPdfDownload = (() => {
 
     const wrapper = document.createElement('div');
 
-    // Only extract Candidate details if this is the very first part
     if (isFirstPart) {
         let candInfo = doc.querySelector('.main-info-pnl') || 
                        Array.from(doc.querySelectorAll('table')).find(t => t.textContent.includes('Candidate Name') || t.textContent.includes('Roll No'));
@@ -89,10 +87,8 @@ const RSMPdfDownload = (() => {
         }
     }
 
-    // Extract questions
-    let questions = Array.from(doc.querySelectorAll('.question-pnl')); // RRB
+    let questions = Array.from(doc.querySelectorAll('.question-pnl'));
     if (questions.length === 0) {
-        // SSC Extract
         const tds = Array.from(doc.querySelectorAll('td')).filter(td => td.textContent.includes('Q.No'));
         const sscTables = new Set();
         tds.forEach(td => {
@@ -173,14 +169,31 @@ const RSMPdfDownload = (() => {
     const partKeys = sortPartKeys(parts);
 
     try {
-      // 1. Extract and combine all parts into one long clean HTML string
       let combinedHtml = '';
       for (let i = 0; i < partKeys.length; i++) {
          const rawHtml = parts[partKeys[i]];
          combinedHtml += extractCleanContent(rawHtml, i === 0);
       }
 
-      // 2. Wrap it in standard print CSS
+      // 1. Parse into a temporary container to fetch and swap images to base64
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = combinedHtml;
+
+      setButtonBusy(btn, true, 'Fetching Images securely...');
+      const imgs = Array.from(tempDiv.querySelectorAll('img'));
+      await Promise.all(imgs.map(async img => {
+        const absoluteUrl = img.src; 
+        if (!absoluteUrl || absoluteUrl.startsWith('data:')) return;
+        
+        const dataUri = await fetchImageAsDataUri(absoluteUrl, referer);
+        if (dataUri) {
+            img.src = dataUri;
+        } else {
+            img.style.display = 'none'; 
+        }
+      }));
+
+      // 2. Wrap the fully processed HTML (with base64 images) in Print CSS
       const finalDocumentHtml = `
       <!DOCTYPE html>
       <html>
@@ -188,62 +201,63 @@ const RSMPdfDownload = (() => {
         <meta charset="utf-8">
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; color: #000; background: #fff; }
-          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          table { width: 100%; border-collapse: collapse; page-break-inside: auto; margin-bottom: 15px; }
           tr { page-break-inside: avoid; page-break-after: auto; }
-          td, th { padding: 5px; word-wrap: break-word; }
+          td, th { padding: 4px; word-wrap: break-word; }
           img { max-width: 100%; height: auto; display: block; }
-          .question-pnl, table[cellpadding="8"] { page-break-inside: avoid; margin-bottom: 25px; }
+          .question-pnl, table[cellpadding="8"] { page-break-inside: avoid; margin-bottom: 20px; }
         </style>
       </head>
       <body>
-        ${combinedHtml}
+        ${tempDiv.innerHTML}
       </body>
       </html>
       `;
 
-      // 3. Create a hidden print iframe
-      const printIframe = document.createElement('iframe');
-      printIframe.style.position = 'fixed';
-      printIframe.style.right = '0';
-      printIframe.style.bottom = '0';
-      printIframe.style.width = '0';
-      printIframe.style.height = '0';
-      printIframe.style.border = '0';
-      document.body.appendChild(printIframe);
-
-      const doc = printIframe.contentWindow.document;
-      doc.open();
-      doc.write(finalDocumentHtml);
-      doc.close();
-
-      setButtonBusy(btn, true, 'Fetching Images securely...');
-
-      // 4. Fetch all images inside the iframe and convert to base64
-      const imgs = Array.from(doc.querySelectorAll('img'));
-      await Promise.all(imgs.map(async img => {
-        const absoluteUrl = img.src; 
-        if (!absoluteUrl || absoluteUrl.startsWith('data:')) return;
-        const dataUri = await fetchImageAsDataUri(absoluteUrl, referer);
-        if (dataUri) img.src = dataUri;
-        else img.style.display = 'none'; // hide broken images
-      }));
-
-      // 5. Trigger the Native Print Spooler (Allows saving as true PDF)
+      // 3. Trigger the Native Print Spooler
       setButtonBusy(btn, true, 'Opening PDF...');
       
-      // Short delay to ensure browser paints the DOM
-      setTimeout(() => {
-        printIframe.contentWindow.focus();
-        printIframe.contentWindow.print();
+      setTimeout(async () => {
+        if (isNativeApp()) {
+            // ---> CAPACITOR ANDROID LOGIC
+            const Printer = nativePlugin('Printer');
+            if (Printer) {
+                try {
+                    await Printer.print({
+                        content: finalDocumentHtml,
+                        name: 'Rank_Score_Master_Result'
+                    });
+                } catch (err) {
+                    console.error('Print plugin failed:', err);
+                    notify('Failed to open PDF dialog.', true);
+                }
+            } else {
+                notify('Printer plugin is missing. Please update the app.', true);
+            }
+        } else {
+            // ---> STANDARD WEB BROWSER LOGIC (Chrome/Desktop)
+            const printIframe = document.createElement('iframe');
+            printIframe.style.position = 'fixed';
+            printIframe.style.right = '0';
+            printIframe.style.bottom = '0';
+            printIframe.style.width = '0';
+            printIframe.style.height = '0';
+            printIframe.style.border = '0';
+            document.body.appendChild(printIframe);
+
+            const doc = printIframe.contentWindow.document;
+            doc.open();
+            doc.write(finalDocumentHtml);
+            doc.close();
+
+            setTimeout(() => {
+                printIframe.contentWindow.focus();
+                printIframe.contentWindow.print();
+                setTimeout(() => document.body.removeChild(printIframe), 60000);
+            }, 500);
+        }
         
         setButtonBusy(btn, false);
-        
-        // Clean up the iframe after a minute so the spooler has time to catch it
-        setTimeout(() => {
-            if (document.body.contains(printIframe)) {
-                document.body.removeChild(printIframe);
-            }
-        }, 60000);
       }, 500);
 
     } catch (e) {
