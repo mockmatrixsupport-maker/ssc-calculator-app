@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════
    RANK SCORE MASTER — pdf-download.js
-   Dynamic width rendering for SSC & RRB exam sheets
+   Nuclear DOM Cleanup rendering for SSC & RRB 
 ═══════════════════════════════════════════════════ */
 
 const RSMPdfDownload = (() => {
@@ -14,7 +14,8 @@ const RSMPdfDownload = (() => {
   const IMAGE_FETCH_TIMEOUT_MS = 12000; 
   const PART_TIMEOUT_MS = 90000;        
 
-  // Lowered scale slightly for speed since we are rendering exact dynamic width now
+  // Set a fixed render width to map perfectly to A4 proportions
+  const RENDER_WIDTH = 1000; 
   const CANVAS_SCALE = 1.25;
 
   let html2pdfLoading = null;
@@ -154,29 +155,42 @@ const RSMPdfDownload = (() => {
     const style = doc.createElement('style');
     style.textContent = `
       * { box-sizing: border-box !important; }
-      body { 
+      body, html { 
         margin: 0 !important; 
         padding: 0 !important; 
         width: 100% !important; 
+        max-width: 100% !important;
         overflow-x: hidden !important; 
         background: #fff !important; 
       }
       
-      /* Force all centering elements to align strictly to the left to remove white space */
-      center, table {
+      /* Force everything to align strictly to the left */
+      center, table, div {
         margin-left: 0 !important;
         margin-right: auto !important;
         text-align: left !important;
       }
 
-      /* Dynamically contain wide elements so they don't break right boundaries */
-      img { max-width: 100% !important; height: auto !important; }
+      /* STRICT CONTAINMENT: Prevents any content from getting cut off on the right */
       table { 
         width: 100% !important; 
         max-width: 100% !important; 
-        table-layout: auto !important; 
+        table-layout: fixed !important; /* Forces tables to obey boundaries */
+        border-collapse: collapse !important;
       }
-      td, th, div { word-break: break-word !important; }
+      
+      td, th, span, div, p { 
+        word-wrap: break-word !important; 
+        word-break: break-word !important; 
+        overflow-wrap: break-word !important;
+        white-space: normal !important;
+      }
+
+      img { 
+        max-width: 100% !important; 
+        height: auto !important; 
+        display: block !important;
+      }
 
       .question-pnl, table[cellpadding="8"] {
         page-break-inside: avoid !important;
@@ -286,8 +300,7 @@ const RSMPdfDownload = (() => {
       iframe.style.position = 'fixed';
       iframe.style.left = '-99999px';
       iframe.style.top = '0';
-      // Set to 100% initially to let the DOM settle into its natural layout
-      iframe.style.width = '100%'; 
+      iframe.style.width = RENDER_WIDTH + 'px'; 
       iframe.style.height = '100px';
       iframe.style.border = '0';
       iframe.setAttribute('aria-hidden', 'true');
@@ -296,19 +309,34 @@ const RSMPdfDownload = (() => {
       iframe.onload = async () => {
         try {
           const doc = iframe.contentDocument;
+          
+          // 1. Remove watermarks immediately
           doc.querySelectorAll(WATERMARK_SELECTOR).forEach(el => el.remove());
           
+          // 2. NUCLEAR CLEANUP: Unwrap all <center> tags to fix left-side white space
+          doc.querySelectorAll('center').forEach(el => {
+            const frag = doc.createDocumentFragment();
+            while (el.firstChild) {
+                frag.appendChild(el.firstChild);
+            }
+            if(el.parentNode) el.parentNode.replaceChild(frag, el);
+          });
+
+          // 3. NUCLEAR CLEANUP: Strip legacy width attributes to fix right-side cut-off
+          doc.querySelectorAll('*').forEach(el => {
+            if (el.hasAttribute('width')) el.removeAttribute('width');
+            if (el.style.width) el.style.width = '';
+            if (el.style.minWidth) el.style.minWidth = '';
+          });
+
           await embedImages(doc, referer); 
           applyPdfLayoutRules(doc);         
 
-          // Dynamically read exact required width AFTER injected CSS is applied
-          const contentWidth = Math.max(doc.body.scrollWidth, doc.documentElement.scrollWidth, 800);
-          const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 400);
-          
-          iframe.style.width = contentWidth + 'px';
+          // Measure height after DOM settles
+          const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 800);
           iframe.style.height = h + 'px';
           
-          resolve({ iframe, contentWidth });
+          resolve({ iframe });
         } catch (e) {
           iframe.remove();
           reject(e);
@@ -320,17 +348,17 @@ const RSMPdfDownload = (() => {
   }
 
   function partToPdfArrayBuffer(html, baseHref, referer) {
-    const work = renderPartToIframe(html, baseHref, referer).then(({ iframe, contentWidth }) => {
+    const work = renderPartToIframe(html, baseHref, referer).then(({ iframe }) => {
       const body = iframe.contentDocument.body;
       const opt = {
         margin: [10, 8, 10, 8], 
-        image: { type: 'jpeg', quality: 0.92 },
+        image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
           scale: CANVAS_SCALE,
           useCORS: true,
           allowTaint: true,
-          windowWidth: contentWidth,  // Set dynamically to precise width requirement
-          width: contentWidth,        // Ensure Canvas matches DOM strictly
+          windowWidth: RENDER_WIDTH, // Fixed width matching iframe
+          width: RENDER_WIDTH,       // Fixed width matching iframe
           logging: false,
           imageTimeout: 0 
         },
@@ -374,7 +402,6 @@ const RSMPdfDownload = (() => {
       ? `Rendering ${partKeys.length} parts...`
       : 'Generating PDF...');
 
-    // This Promise.all architecture guarantees multiple frames process concurrently for speed
     const buffers = await Promise.all(
       partKeys.map(key => partToPdfArrayBuffer(parts[key], baseHref, referer))
     );
