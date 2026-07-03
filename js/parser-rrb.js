@@ -1,49 +1,27 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — parser-rrb.js  (v2 — rewritten)
+   RANK SCORE MASTER — parser-rrb.js  (v3 — adds real Question/Option IDs)
    Parses the single-page RRB / DigiAlm response sheet HTML
    into the same { candidateInfo, sections[] } shape the SSC
    parser produces.
 
-   Verified against a real fetched RRB NTPC response page.
-   Real structure confirmed:
+   NEW in v3: each question block's menu-tbl carries real,
+   globally-unique identifiers that v2 was reading past without
+   extracting:
 
-   CANDIDATE INFO — plain table, no wrapper class on values:
-     <tr><td>Roll Number</td><td>247254121825965</td></tr>
-     <tr><td>Candidate Name</td><td>VIMAL PRAJAPAT</td></tr>
-     <tr><td>Subject</td><td>RRB NTPC UnderGraduate CBT I</td></tr>
-     ...
+     <tr><td>Question ID :</td><td class="bold">4410091631384</td></tr>
+     <tr><td>Option 1 ID :</td><td class="bold">4410096443760</td></tr>
+     <tr><td>Option 2 ID :</td><td class="bold">4410096443763</td></tr>
+     <tr><td>Option 3 ID :</td><td class="bold">4410096443761</td></tr>
+     <tr><td>Option 4 ID :</td><td class="bold">4410096443762</td></tr>
 
-   SECTIONS:
-     <div class="section-lbl">
-       <span>Section :&nbsp;</span><span class="bold">Mathematics</span>
-     </div>
+   These are now attached to every question as `qId` and
+   `optionIds` ({ "1": "...", "2": "...", "3": "...", "4": "..." }).
+   `optionIds` is captured now for future per-option analytics
+   (e.g. option-wise selection distribution) but is NOT consumed
+   by score-engine.js today — only `qId` + `status` are.
 
-   QUESTIONS — each question starts with "Q.<number>" in a
-   <td width="7%" class="bold">, e.g. "Q.1", "Q.99", "Q.100".
-
-   ANSWER ROWS — exactly 4 rows per question, each one's own
-   text starts with its own letter ("A.", "B.", "C.", "D.")
-   and each row carries class="rightAns" or class="wrngAns":
-     <td class="wrngAns">...>A. 15</td>
-     <td class="rightAns">...>B. 18</td>
-     ...
-
-   METADATA — per question, in the menu-tbl panel:
-     <tr><td>Status :</td><td class="bold">Answered</td></tr>
-     <tr><td>Chosen Option :</td><td class="bold">C</td></tr>
-
-   STATUS LOGIC (exact rules):
-     1. Chosen Option is not a real letter (A/B/C/D) —
-        e.g. "--", blank, missing                      → skipped
-        (Determined from the Chosen Option value itself,
-        NOT from the page's own "Status: Answered /
-        Not Answered" text label.)
-     2. Chosen Option letter's row class
-        is "rightAns"                                  → correct
-     3. Chosen Option letter's row class
-        is "wrngAns"                                   → wrong
-     4. Anything else — chosen letter looked valid but
-        no matching row found, malformed block, etc.   → bonus
+   Everything else (candidate info, section splitting, question
+   splitting, status logic) is unchanged from v2.
 ═══════════════════════════════════════════════════ */
 
 const RSMParserRRB = (() => {
@@ -160,12 +138,35 @@ const RSMParserRRB = (() => {
   }
 
   /**
+   * NEW — extracts the real, globally-unique Question ID from the
+   * menu-tbl panel (e.g. "4410091631384"). Returns null if not found
+   * so callers can fall back to a synthetic placeholder.
+   */
+  function extractQuestionId(block) {
+    const m = block.match(/Question\s*ID\s*:\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+    return m ? decodeEntities(m[1].replace(/<[^>]+>/g, '')) : null;
+  }
+
+  /**
+   * NEW — extracts all "Option N ID :" values from the menu-tbl panel
+   * into { "1": "...", "2": "...", "3": "...", "4": "..." }.
+   * Not used by score-engine.js yet — kept for future per-option
+   * analytics (option-wise selection distribution across candidates).
+   */
+  function extractOptionIds(block) {
+    const ids = {};
+    const re = /Option\s*(\d)\s*ID\s*:\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/gi;
+    let m;
+    while ((m = re.exec(block)) !== null) {
+      ids[m[1]] = decodeEntities(m[2].replace(/<[^>]+>/g, ''));
+    }
+    return ids;
+  }
+
+  /**
    * Status logic — exact rules, evaluated in this priority order:
    *   1. Chosen Option is not a real option letter (A/B/C/D) —
-   *      e.g. "--", blank, "-", or missing entirely  → skipped
-   *      (We deliberately do NOT trust the page's own "Status:
-   *      Answered / Not Answered" text label for this — whether
-   *      a real option letter was chosen is the actual signal.)
+   *      e.g. "--", blank, or missing entirely  → skipped
    *   2. Chosen letter's row has class "rightAns"     → correct
    *   3. Chosen letter's row has class "wrngAns"       → wrong
    *   4. Anything else (chosen letter present but no
@@ -198,6 +199,8 @@ const RSMParserRRB = (() => {
     const blocks = splitQuestions(section.html);
     const questions = blocks.map(b => ({
       qno: b.qno,
+      qId: extractQuestionId(b.html),       // e.g. "4410091631384", or null if not found
+      optionIds: extractOptionIds(b.html),  // { "1":"...", "2":"...", "3":"...", "4":"..." }
       status: questionStatus(b.html)
     }));
     return { name: section.name, questions };
@@ -218,3 +221,4 @@ const RSMParserRRB = (() => {
 
   return { parse };
 })();
+
