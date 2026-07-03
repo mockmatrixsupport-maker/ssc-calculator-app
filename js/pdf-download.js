@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════
    RANK SCORE MASTER — pdf-download.js
-   Nuclear DOM Cleanup rendering for SSC & RRB 
+   Extraction & Re-templating engine for SSC & RRB 
 ═══════════════════════════════════════════════════ */
 
 const RSMPdfDownload = (() => {
@@ -8,15 +8,13 @@ const RSMPdfDownload = (() => {
   const HTML2PDF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
   const PDFLIB_URL   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
 
-  const WATERMARK_SELECTOR = '#lblWatermark, .watermark-container, [id*="watermark" i], [class*="watermark" i]';
-
   const SCRIPT_LOAD_TIMEOUT_MS = 25000; 
   const IMAGE_FETCH_TIMEOUT_MS = 12000; 
   const PART_TIMEOUT_MS = 90000;        
 
-  // Set a fixed render width to map perfectly to A4 proportions
+  // Strict width for perfect A4 scaling
   const RENDER_WIDTH = 1000; 
-  const CANVAS_SCALE = 1.25;
+  const CANVAS_SCALE = 1.5;
 
   let html2pdfLoading = null;
   let pdfLibLoading = null;
@@ -78,27 +76,6 @@ const RSMPdfDownload = (() => {
     try { return new URL(url).origin + '/'; } catch (e) { return ''; }
   }
 
-  function deriveBaseHref(url) {
-    try {
-      const u = new URL(url);
-      return u.origin + u.pathname.replace(/[^/]*$/, '');
-    } catch (e) {
-      return '';
-    }
-  }
-
-  function withBaseHref(html, baseHref) {
-    if (!baseHref) return html;
-    if (/<head[^>]*>/i.test(html)) {
-      return html.replace(/<head([^>]*)>/i, `<head$1><base href="${baseHref}">`);
-    }
-    return `<base href="${baseHref}">` + html;
-  }
-
-  function stripScripts(html) {
-    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  }
-
   function guessMime(url) {
     const m = /\.(jpe?g|png|gif|webp|bmp|svg)(\?|#|$)/i.exec(url || '');
     if (!m) return 'image/jpeg';
@@ -151,69 +128,124 @@ const RSMPdfDownload = (() => {
     }));
   }
 
-  function applyPdfLayoutRules(doc) {
-    const style = doc.createElement('style');
-    style.textContent = `
-      * { box-sizing: border-box !important; }
-      body, html { 
-        margin: 0 !important; 
-        padding: 0 !important; 
-        width: 100% !important; 
-        max-width: 100% !important;
-        overflow-x: hidden !important; 
-        background: #fff !important; 
-      }
-      
-      /* Force everything to align strictly to the left */
-      center, table, div {
-        margin-left: 0 !important;
-        margin-right: auto !important;
-        text-align: left !important;
-      }
+  // ═══════════════ THE NEW DATA EXTRACTOR ═══════════════
+  // This takes the dirty SSC/RRB HTML and builds a clean template
+  function rebuildCleanHtml(rawHtml, baseHref) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, 'text/html');
 
-      /* STRICT CONTAINMENT: Prevents any content from getting cut off on the right */
-      table { 
-        width: 100% !important; 
-        max-width: 100% !important; 
-        table-layout: fixed !important; /* Forces tables to obey boundaries */
-        border-collapse: collapse !important;
-      }
-      
-      td, th, span, div, p { 
-        word-wrap: break-word !important; 
-        word-break: break-word !important; 
-        overflow-wrap: break-word !important;
-        white-space: normal !important;
-      }
+    // Remove garbage
+    doc.querySelectorAll('.watermark-container, .watermark-text, #lblWatermark, script, noscript').forEach(el => el.remove());
 
-      img { 
-        max-width: 100% !important; 
-        height: auto !important; 
-        display: block !important;
-      }
+    // Create the clean container (similar to your Python script's logic)
+    const cleanBody = document.createElement('div');
+    cleanBody.style.fontFamily = 'Arial, sans-serif';
+    cleanBody.style.width = RENDER_WIDTH + 'px';
+    cleanBody.style.margin = '0';
+    cleanBody.style.padding = '20px';
+    cleanBody.style.background = '#fff';
+    cleanBody.style.color = '#000';
 
-      .question-pnl, table[cellpadding="8"] {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-      }
-
-      .main-info-pnl {
-        page-break-after: always !important;
-        break-after: page !important;
-      }
-    `;
-    doc.head.appendChild(style);
-
-    const candidates = Array.from(doc.querySelectorAll('input[type="submit"], button, td, div, span'));
-    const partBtn = candidates.find(el => /Click Here for PART/i.test(el.value || el.textContent || ''));
-    if (partBtn) {
-      const tbl = partBtn.closest('table') || partBtn.closest('tr');
-      if (tbl) {
-        tbl.style.pageBreakAfter = 'always';
-        tbl.style.breakAfter = 'page';
-      }
+    // 1. Extract Candidate Header
+    let candInfo = doc.querySelector('.main-info-pnl'); 
+    if (!candInfo) { // SSC fallback
+        candInfo = Array.from(doc.querySelectorAll('table')).find(t => t.textContent.includes('Candidate Name') || t.textContent.includes('Roll No'));
     }
+    if (candInfo) {
+        const header = candInfo.cloneNode(true);
+        header.style.width = '100%';
+        header.style.marginBottom = '30px';
+        header.style.borderCollapse = 'collapse';
+        cleanBody.appendChild(header);
+    }
+
+    // 2. Extract Questions cleanly
+    let questions = Array.from(doc.querySelectorAll('.question-pnl')); // RRB
+    if (questions.length === 0) {
+        // SSC Extract: Find tables that contain "Q.No"
+        const tds = Array.from(doc.querySelectorAll('td')).filter(td => td.textContent.includes('Q.No'));
+        const sscTables = new Set();
+        tds.forEach(td => {
+            const table = td.closest('table[border="1"]') || td.closest('table');
+            if (table) sscTables.add(table);
+        });
+        questions = Array.from(sscTables);
+    }
+
+    // Put extracted questions into the clean body
+    if (questions.length > 0) {
+        questions.forEach(q => {
+            const qClone = q.cloneNode(true);
+            qClone.style.width = '100%';
+            qClone.style.marginBottom = '25px';
+            qClone.style.pageBreakInside = 'avoid';
+            
+            if (qClone.tagName.toLowerCase() === 'table') {
+                qClone.style.borderCollapse = 'collapse';
+                qClone.style.tableLayout = 'auto';
+            }
+            cleanBody.appendChild(qClone);
+        });
+    } else {
+        // Fallback if extremely strange layout
+        cleanBody.innerHTML = doc.body.innerHTML;
+    }
+
+    // 3. NUCLEAR DOM CLEANUP ON THE EXTRACTED TEMPLATE
+    // Remove all <center> tags entirely
+    cleanBody.querySelectorAll('center').forEach(c => {
+        const frag = document.createDocumentFragment();
+        while (c.firstChild) frag.appendChild(c.firstChild);
+        c.parentNode.replaceChild(frag, c);
+    });
+
+    // Strip every legacy layout attribute that ruins html2canvas
+    cleanBody.querySelectorAll('*').forEach(el => {
+        el.removeAttribute('width');
+        el.removeAttribute('height');
+        el.removeAttribute('align');
+        el.removeAttribute('valign');
+        el.style.width = '';
+        el.style.height = '';
+        el.style.minWidth = '';
+        el.style.maxWidth = '100%'; 
+        
+        // Force text wrapping
+        if(['TD', 'TH', 'DIV', 'SPAN', 'P'].includes(el.tagName)) {
+            el.style.wordBreak = 'break-word';
+            el.style.whiteSpace = 'normal';
+        }
+    });
+
+    // Force tables to behave
+    cleanBody.querySelectorAll('table').forEach(t => {
+        t.style.width = '100%';
+        t.style.borderCollapse = 'collapse';
+        t.style.tableLayout = 'fixed';
+    });
+
+    // Fix images
+    cleanBody.querySelectorAll('img').forEach(img => {
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        img.style.display = 'block';
+    });
+
+    // Add Base Href for image fetching
+    const baseTag = baseHref ? `<base href="${baseHref}">` : '';
+
+    return `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        ${baseTag}
+      </head>
+      <body style="margin:0; padding:0; background:#fff;">
+        ${cleanBody.outerHTML}
+      </body>
+    </html>`;
   }
+  // ═════════════════════════════════════════════════════
 
   function bytesToBase64(bytes) {
     let binary = '';
@@ -294,7 +326,8 @@ const RSMPdfDownload = (() => {
 
   function renderPartToIframe(html, baseHref, referer) {
     return new Promise((resolve, reject) => {
-      const prepared = withBaseHref(stripScripts(html), baseHref);
+      // 1. Convert dirty HTML to clean, extracted template
+      const cleanHtml = rebuildCleanHtml(html, baseHref);
 
       const iframe = document.createElement('iframe');
       iframe.style.position = 'fixed';
@@ -310,29 +343,9 @@ const RSMPdfDownload = (() => {
         try {
           const doc = iframe.contentDocument;
           
-          // 1. Remove watermarks immediately
-          doc.querySelectorAll(WATERMARK_SELECTOR).forEach(el => el.remove());
-          
-          // 2. NUCLEAR CLEANUP: Unwrap all <center> tags to fix left-side white space
-          doc.querySelectorAll('center').forEach(el => {
-            const frag = doc.createDocumentFragment();
-            while (el.firstChild) {
-                frag.appendChild(el.firstChild);
-            }
-            if(el.parentNode) el.parentNode.replaceChild(frag, el);
-          });
-
-          // 3. NUCLEAR CLEANUP: Strip legacy width attributes to fix right-side cut-off
-          doc.querySelectorAll('*').forEach(el => {
-            if (el.hasAttribute('width')) el.removeAttribute('width');
-            if (el.style.width) el.style.width = '';
-            if (el.style.minWidth) el.style.minWidth = '';
-          });
-
+          // Fetch images via custom bypass natively
           await embedImages(doc, referer); 
-          applyPdfLayoutRules(doc);         
 
-          // Measure height after DOM settles
           const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 800);
           iframe.style.height = h + 'px';
           
@@ -343,7 +356,7 @@ const RSMPdfDownload = (() => {
         }
       };
       iframe.onerror = () => { iframe.remove(); reject(new Error('Could not render part')); };
-      iframe.srcdoc = prepared;
+      iframe.srcdoc = cleanHtml; // Feed the extracted HTML to the iframe
     });
   }
 
@@ -354,16 +367,15 @@ const RSMPdfDownload = (() => {
         margin: [10, 8, 10, 8], 
         image: { type: 'jpeg', quality: 0.95 },
         html2canvas: {
-          scale: CANVAS_SCALE,
+          scale: CANVAS_SCALE, // Clean HTML scales perfectly now
           useCORS: true,
           allowTaint: true,
-          windowWidth: RENDER_WIDTH, // Fixed width matching iframe
-          width: RENDER_WIDTH,       // Fixed width matching iframe
+          windowWidth: RENDER_WIDTH,
+          width: RENDER_WIDTH,       
           logging: false,
           imageTimeout: 0 
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css'], avoid: ['.question-pnl', 'table[cellpadding="8"]'] }
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
       return window.html2pdf().set(opt).from(body).outputPdf('arraybuffer')
         .then(buf => { iframe.remove(); return buf; })
@@ -437,4 +449,4 @@ const RSMPdfDownload = (() => {
 
   return { handlePdfClick };
 })();
-
+         
