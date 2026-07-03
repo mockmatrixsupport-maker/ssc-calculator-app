@@ -59,17 +59,29 @@ const RSMScoreEngine = (() => {
     let totalCorrect = 0, totalWrong = 0, totalSkipped = 0, totalBonus = 0, totalQ = 0;
     const sectionResults = [];
 
-    parsed.sections.forEach(sec => {
+    parsed.sections.forEach((sec, secIdx) => {
       let c = 0, w = 0, s = 0, b = 0;
+      const questionMap = {};
+
       sec.questions.forEach(q => {
         if (q.status === 'correct') c++;
         else if (q.status === 'wrong') w++;
         else if (q.status === 'bonus') b++;
         else s++;
+
+        // qId comes from the parser when the source carries a real,
+        // globally-unique question ID (currently RRB only). Falls back
+        // to a section-scoped placeholder for exam families where a
+        // real ID scheme hasn't been found yet (currently SSC). Field
+        // shape never changes downstream — only the value format
+        // changes once a real SSC ID is added later.
+        const key = q.qId || `S${secIdx}-Q${q.qno}`;
+        questionMap[key] = q.status;
       });
+
       const total = sec.questions.length;
       const score = (c * correctMark) - (w * wrongMark) + (b * correctMark);
-      sectionResults.push({ name: sec.name, total, correct: c, wrong: w, skipped: s, bonus: b, score });
+      sectionResults.push({ name: sec.name, total, correct: c, wrong: w, skipped: s, bonus: b, score, questions: questionMap });
 
       totalCorrect += c; totalWrong += w; totalSkipped += s; totalBonus += b; totalQ += total;
     });
@@ -336,6 +348,20 @@ const RSMScoreEngine = (() => {
     const result = calculate(parsed, correctMark, wrongMark);
     renderInto(containerEl, result, { url: sourceUrl, family, uiCtx, parts });
 
+    // Fire-and-forget background submission to the backend, if/when one
+    // exists. This runs strictly AFTER the result is already rendered —
+    // it can never delay or block what the user sees. It is wrapped in
+    // try/catch so that even a missing or broken submission.js can never
+    // break scoring/rendering. submission.js itself is a silent no-op
+    // if no backend URL is configured, and queues+retries in the
+    // background (including when the app is reopened/foregrounded) if
+    // a URL is configured but the request fails.
+    try {
+      if (typeof RSMSubmission !== 'undefined') {
+        RSMSubmission.submit(result, { url: sourceUrl, family });
+      }
+    } catch (e) { /* silent by design — submission must never surface to the UI */ }
+
     // Cache only now — fetch + successful calculation both happened.
     // Dynamic fields (ranks, normalised score) are stripped before
     // saving: they must always be N/A-on-load, never stale-from-cache,
@@ -351,4 +377,5 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
 
