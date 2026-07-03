@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════
    RANK SCORE MASTER — pdf-download.js
-   Native Capacitor Print Engine (Zero White Space, Copiable Text)
+   Filesystem Export Method (No Website Needed)
 ═══════════════════════════════════════════════════ */
 
 const RSMPdfDownload = (() => {
@@ -105,7 +105,7 @@ const RSMPdfDownload = (() => {
         wrapper.appendChild(qClone);
     });
 
-    // Nuclear Layout Cleanup
+    // Clean Layout
     wrapper.querySelectorAll('center').forEach(c => {
         const frag = document.createDocumentFragment();
         while (c.firstChild) frag.appendChild(c.firstChild);
@@ -175,7 +175,7 @@ const RSMPdfDownload = (() => {
          combinedHtml += extractCleanContent(rawHtml, i === 0);
       }
 
-      // 1. Parse into a temporary container to fetch and swap images to base64
+      // 1. Swap images to base64 so they work entirely offline
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = combinedHtml;
 
@@ -193,80 +193,110 @@ const RSMPdfDownload = (() => {
         }
       }));
 
-      // 2. Wrap the fully processed HTML (with base64 images) in Print CSS
+      // 2. Build the final HTML string
       const finalDocumentHtml = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
+        <title>Answer Key - Print</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; color: #000; background: #fff; }
+          .print-header { text-align: center; margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+          .print-btn { background-color: #0f766e; color: #fff; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+          .print-btn:hover { background-color: #115e59; }
+          .print-hint { font-size: 12px; color: #64748b; margin-top: 10px; }
           table { width: 100%; border-collapse: collapse; page-break-inside: auto; margin-bottom: 15px; }
           tr { page-break-inside: avoid; page-break-after: auto; }
           td, th { padding: 4px; word-wrap: break-word; }
           img { max-width: 100%; height: auto; display: block; }
           .question-pnl, table[cellpadding="8"] { page-break-inside: avoid; margin-bottom: 20px; }
+          @media print {
+              .print-header { display: none !important; }
+              body { padding: 0; }
+          }
         </style>
       </head>
       <body>
+        <div class="print-header">
+            <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+            <div class="print-hint">Tap the button above to generate a high-quality PDF.</div>
+        </div>
         ${tempDiv.innerHTML}
+        <script>
+            window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+        </script>
       </body>
       </html>
       `;
 
-      // 3. Trigger the Native Print Spooler
-      setButtonBusy(btn, true, 'Opening PDF...');
+      // ─── 3. LOGIC FOR ANDROID APP (Filesystem + Share) ───
+      if (isNativeApp()) {
+          setButtonBusy(btn, true, 'Creating File...');
+          const Filesystem = nativePlugin('Filesystem');
+          const Share = nativePlugin('Share');
+
+          if (Filesystem && Share) {
+              const fileName = `RankScoreMaster_${Date.now()}.html`;
+
+              // Write HTML to physical device storage
+              await Filesystem.writeFile({
+                  path: fileName,
+                  data: finalDocumentHtml,
+                  directory: 'CACHE',
+                  encoding: 'utf8'
+              });
+
+              // Get the secure file URI that external apps can access
+              const uriResult = await Filesystem.getUri({
+                  path: fileName,
+                  directory: 'CACHE'
+              });
+
+              setButtonBusy(btn, true, 'Opening Menu...');
+
+              // Trigger Android Share menu to let user open it in Chrome
+              await Share.share({
+                  title: 'Print Exam Result',
+                  text: 'Open this file in your browser to Print or Save as PDF.',
+                  url: uriResult.uri,
+                  dialogTitle: 'Open with Browser'
+              });
+
+              notify('Select Chrome or your browser from the menu to open and print.');
+          } else {
+              notify('Filesystem/Share plugins missing. Please update app.', true);
+          }
+          
+          setButtonBusy(btn, false);
+      } 
       
-      setTimeout(async () => {
-        if (isNativeApp()) {
-            // ---> CAPACITOR ANDROID LOGIC
-            const Printer = nativePlugin('Printer');
-            if (Printer) {
-                try {
-                    await Printer.print({
-                        content: finalDocumentHtml,
-                        name: 'Rank_Score_Master_Result'
-                    });
-                } catch (err) {
-                    console.error('Print plugin failed:', err);
-                    notify('Failed to open PDF dialog.', true);
-                }
-            } else {
-                notify('Printer plugin is missing. Please update the app.', true);
-            }
-        } else {
-            // ---> STANDARD WEB BROWSER LOGIC (Chrome/Desktop)
-            const printIframe = document.createElement('iframe');
-            printIframe.style.position = 'fixed';
-            printIframe.style.right = '0';
-            printIframe.style.bottom = '0';
-            printIframe.style.width = '0';
-            printIframe.style.height = '0';
-            printIframe.style.border = '0';
-            document.body.appendChild(printIframe);
+      // ─── 4. LOGIC FOR WEB BROWSER (Direct Link/Blob) ───
+      else {
+          setButtonBusy(btn, true, 'Opening PDF Link...');
+          const blob = new Blob([finalDocumentHtml], { type: 'text/html;charset=utf-8' });
+          const blobUrl = URL.createObjectURL(blob);
 
-            const doc = printIframe.contentWindow.document;
-            doc.open();
-            doc.write(finalDocumentHtml);
-            doc.close();
-
-            setTimeout(() => {
-                printIframe.contentWindow.focus();
-                printIframe.contentWindow.print();
-                setTimeout(() => document.body.removeChild(printIframe), 60000);
-            }, 500);
-        }
-        
-        setButtonBusy(btn, false);
-      }, 500);
+          setTimeout(() => {
+            const linkElement = document.createElement('a');
+            linkElement.href = blobUrl;
+            linkElement.target = '_blank'; 
+            document.body.appendChild(linkElement);
+            linkElement.click();
+            document.body.removeChild(linkElement);
+            
+            setButtonBusy(btn, false);
+          }, 500);
+      }
 
     } catch (e) {
-      console.error('PDF generation failed:', e);
-      notify('An error occurred while generating the PDF.', true);
+      console.error('PDF page generation failed:', e);
+      notify('An error occurred while generating the page link.', true);
       setButtonBusy(btn, false);
     }
   }
 
   return { handlePdfClick };
 })();
-
+                     
