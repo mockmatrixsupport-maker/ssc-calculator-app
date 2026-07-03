@@ -28,11 +28,50 @@
    WebView never has to load the image over the network at
    all, so Referer/CORS/cookies stop being a problem.
 
-   ── Why it was one giant page ──
+   ── Why it was one giant page (fixed) ──
    The PDF page size used to be set to the exact height of
    the whole part. Now it's a real 'a4' page size, so long
    parts paginate into multiple normal-looking pages instead
    of one continuous strip.
+
+   ── Why pages had huge white gaps + right-edge cut-off (fixed) ──
+   Two separate bugs, both now fixed in this version:
+
+   1. The old `pagebreak.avoid` list (['tr', '.qstn-row',
+      '.rw', '.questionRowTbl']) doesn't match the real DOM.
+      '.qstn-row' / '.questionRowTbl' aren't containers in
+      either source page, and 'tr' matches *every* row in
+      *every* table on the page (header table, answer-key
+      table, every option row — hundreds of elements). Combined
+      with html2pdf's 'legacy' pagebreak mode, that caused a
+      blank filler to get inserted before nearly every row it
+      couldn't safely place, which is what produced the mostly-
+      empty pages. It was also slow, since legacy mode has to
+      evaluate every one of those matches.
+
+      The real per-question containers are:
+        - RRB source pages: `.question-pnl` (already carries
+          an inline `page-break-inside:avoid` — we just needed
+          to stop fighting it)
+        - SSC source pages: each question is its own
+          `<table cellpadding="8">` — no shared class, but the
+          attribute is consistent across every question.
+
+      We now inject a small stylesheet into the rendered iframe
+      that marks exactly those two containers as
+      page-break-inside:avoid, use html2pdf's 'css' pagebreak
+      mode only (drop 'legacy'), and force a clean break right
+      after the candidate-info header block — `.main-info-pnl`
+      on RRB pages, or the table holding the "Click Here for
+      PART-A/B/C" buttons on SSC pages — so the header table and
+      the question list never share a page.
+
+   2. Some source elements (e.g. the RRB banner image, wide
+      fixed-width table cells) are wider than the 1000px the
+      iframe used to render at, so html2canvas silently clipped
+      them at the right edge. We now render wider (1400px) and
+      inject CSS that caps images/tables to the viewport width
+      so nothing runs past the printable area.
 
    Pipeline (same for RRB [1 part] and SSC [N parts]):
      1. Each raw part page loads into a detached, off-screen
@@ -42,11 +81,14 @@
      2. Every <img> is fetched with the correct Referer and
         inlined as a data: URI (bounded per-image timeout —
         a failed/slow image is dropped, not left hanging).
-     3. Each part renders to its own (possibly multi-page) A4
+     3. Page-break + responsive-width rules are injected (see
+        above) before we ever measure/capture the iframe.
+     4. Each part renders to its own (possibly multi-page) A4
         PDF via html2pdf.js, wrapped in an overall timeout.
-     4. 1 part -> delivered directly. >1 parts (SSC) -> merged
-        into ONE PDF via pdf-lib, then delivered.
-     5. Delivery mirrors handleImage()/handleShare() in
+     5. 1 part -> delivered directly. >1 parts (SSC) -> all
+        parts render in parallel, then merged into ONE PDF via
+        pdf-lib, then delivered.
+     6. Delivery mirrors handleImage()/handleShare() in
         ui-common.js: native builds write via Filesystem +
         hand off to the native Share sheet (a blob <a download>
         click does not reliably trigger a save in the Android
@@ -67,6 +109,13 @@ const RSMPdfDownload = (() => {
   const SCRIPT_LOAD_TIMEOUT_MS = 25000; // CDN can be slow on bad connections
   const IMAGE_FETCH_TIMEOUT_MS = 12000; // per-image cap, all images fetched in parallel
   const PART_TIMEOUT_MS = 90000;        // whole-part render cap (image fetch + capture + encode)
+
+  // Render width for the off-screen iframe. Wide enough that fixed-width
+  // source elements (banner images, legacy table cells) never get clipped
+  // at the right edge; html2canvas scale is tuned down to compensate so
+  // total output pixel size — and render time — stays about the same.
+  const RENDER_WIDTH_PX = 1400;
+  const CANVAS_SCALE = 1.15;
 
   let html2pdfLoading = null;
   let pdfLibLoading = null;
@@ -216,6 +265,52 @@ const RSMPdfDownload = (() => {
     }));
   }
 
+  // ── Page-break + responsive-width rules ──
+  // Injected into the rendered iframe right before capture. Two jobs:
+  //   1. Keep each individual question intact across a page break
+  //      (RRB: .question-pnl, SSC: table[cellpadding="8"]) without
+  //      touching every unrelated <tr> on the page.
+  //   2. Force a clean break between the candidate-info header and the
+  //      question list, and stop wide fixed-width elements (banner
+  //      image, legacy table cells) from getting clipped at the right
+  //      edge of the render.
+  function applyPdfLayoutRules(doc) {
+    const style = doc.createElement('style');
+    style.textContent = `
+      * { box-sizing: border-box !important; }
+      body { width: 100% !important; overflow-x: hidden !important; }
+      img { max-width: 100% !important; height: auto !important; }
+      table { max-width: 100% !important; table-layout: auto !important; }
+      td, th { word-break: break-word !important; }
+
+      /* Keep each question on one page where possible */
+      .question-pnl, table[cellpadding="8"] {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
+      /* Clean split between the candidate-info header and the questions (RRB) */
+      .main-info-pnl {
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+    `;
+    doc.head.appendChild(style);
+
+    // SSC pages don't have a dedicated header class — the row of
+    // "Click Here for PART-X" buttons marks the same boundary, so force
+    // a break right after whichever table holds them.
+    const candidates = Array.from(doc.querySelectorAll('input[type="submit"], button, td, div, span'));
+    const partBtn = candidates.find(el => /Click Here for PART/i.test(el.value || el.textContent || ''));
+    if (partBtn) {
+      const tbl = partBtn.closest('table') || partBtn.closest('tr');
+      if (tbl) {
+        tbl.style.pageBreakAfter = 'always';
+        tbl.style.breakAfter = 'page';
+      }
+    }
+  }
+
   function bytesToBase64(bytes) {
     let binary = '';
     const chunkSize = 0x8000;
@@ -319,6 +414,7 @@ const RSMPdfDownload = (() => {
           const doc = iframe.contentDocument;
           doc.querySelectorAll(WATERMARK_SELECTOR).forEach(el => el.remove());
           await embedImages(doc, referer); // fetch + inline every image ourselves
+          applyPdfLayoutRules(doc);         // fix page-break + width clipping (see notes above)
           const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 400);
           iframe.style.height = h + 'px';
           resolve(iframe);
@@ -338,12 +434,21 @@ const RSMPdfDownload = (() => {
       const opt = {
         margin: [10, 8, 10, 8], // mm
         image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: { scale: 1.5, useCORS: true, allowTaint: true, windowWidth: widthPx, logging: false },
+        html2canvas: {
+          scale: CANVAS_SCALE,
+          useCORS: true,
+          allowTaint: true,
+          windowWidth: widthPx,
+          logging: false,
+          imageTimeout: 0 // images are already inlined as data URIs — nothing left to wait on
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        // Real page breaks instead of one giant page: paginate at normal
-        // A4 boundaries, and avoid slicing a table row / question block
-        // across two pages where the source page's own classes let us.
-        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.qstn-row', '.rw', '.questionRowTbl'] }
+        // 'css' mode respects the page-break-inside/page-break-after rules
+        // applyPdfLayoutRules() just set (both inline and via the injected
+        // stylesheet) instead of re-deriving its own — much cheaper than
+        // 'legacy' mode and doesn't insert filler blank space before every
+        // unrelated <tr> on the page.
+        pagebreak: { mode: ['css'], avoid: ['.question-pnl', 'table[cellpadding="8"]'] }
       };
       return window.html2pdf().set(opt).from(body).outputPdf('arraybuffer')
         .then(buf => { iframe.remove(); return buf; })
@@ -380,14 +485,17 @@ const RSMPdfDownload = (() => {
     const partKeys = sortPartKeys(parts);
     const filenameBase = deriveFilenameBase(url, family);
 
-    const buffers = [];
-    for (let i = 0; i < partKeys.length; i++) {
-      setButtonBusy(btn, true, partKeys.length > 1
-        ? `Rendering part ${i + 1}/${partKeys.length}...`
-        : 'Generating PDF...');
-      const buf = await partToPdfArrayBuffer(parts[partKeys[i]], 1000, baseHref, referer);
-      buffers.push(buf);
-    }
+    setButtonBusy(btn, true, partKeys.length > 1
+      ? `Rendering ${partKeys.length} parts...`
+      : 'Generating PDF...');
+
+    // Independent parts render in parallel now instead of one-at-a-time —
+    // each part is its own detached iframe, so there's no shared state to
+    // race on, and this cuts total time roughly by the part count on SSC's
+    // 3-part papers.
+    const buffers = await Promise.all(
+      partKeys.map(key => partToPdfArrayBuffer(parts[key], RENDER_WIDTH_PX, baseHref, referer))
+    );
 
     if (buffers.length === 1) {
       await deliverPdf(new Uint8Array(buffers[0]), `${safeFilename(filenameBase)}.pdf`);
