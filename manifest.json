@@ -6,12 +6,12 @@
   "data/answerkeys-archive.json": 1,
   "js/native-http.js": 1,
   "js/cache.js": 1,
-  "js/ui-common.js": 1,
+  "js/ui-common.js": 2,
   "js/fetcher-ssc.js": 1,
   "js/fetcher-rrb.js": 1,
   "js/fetch-router.js": 1,
   "js/parser-ssc.js": 1,
   "js/parser-rrb.js": 1,
   "js/score-engine.js": 1,
-  "js/pdf-download.js": 1
+  "js/pdf-download.js": 2
 }
