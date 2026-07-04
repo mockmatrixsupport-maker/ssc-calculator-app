@@ -5,7 +5,7 @@
   "data/answerkeys-latest.json": 4,
   "data/answerkeys-archive.json": 1,
   "js/native-http.js": 1,
-  "js/cache.js": 1,
+  "js/cache.js": 2,
   "js/ui-common.js": 2,
   "js/fetcher-ssc.js": 1,
   "js/fetcher-rrb.js": 1,
@@ -13,5 +13,6 @@
   "js/parser-ssc.js": 1,
   "js/parser-rrb.js": 1,
   "js/score-engine.js": 1,
-  "js/pdf-download.js": 5
+  "js/pdf-download.js": 5,
+    "js/submission.js": 2
 }
