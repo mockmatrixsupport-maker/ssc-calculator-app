@@ -21,9 +21,15 @@
 const RSMCache = (() => {
   const PREFIX = 'rsm-cache:';
   const FORM_PREFIX = 'rsm-formfields:'; // separate namespace: last-used form selections per URL
+  const SUBMITTED_PREFIX = 'rsm-submitted:'; // separate namespace: "already sent to backend" flags per URL
   const VERSION = 4; // bump this if cached schema shape changes — invalidates old entries
   const MAX_ENTRIES = 40; // keep storage bounded on low-end phones
   const RECENT_DEFAULT = 3;
+  const TTL_MS = 2 * 24 * 60 * 60 * 1000; // 2 days — applies to all namespaces below
+
+  function isExpired(savedAt) {
+    return !savedAt || (Date.now() - savedAt) > TTL_MS;
+  }
 
   function keyFor(url) {
     // Normalise the URL a bit so trivial differences (trailing slash, case
@@ -61,9 +67,14 @@ const RSMCache = (() => {
    */
   function getFormFields(url) {
     try {
-      const raw = localStorage.getItem(formKeyFor(url));
+      const k = formKeyFor(url);
+      const raw = localStorage.getItem(k);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
+      if (isExpired(parsed && parsed.savedAt)) {
+        localStorage.removeItem(k);
+        return null;
+      }
       return (parsed && parsed.fields) ? parsed.fields : null;
     } catch (e) {
       return null;
@@ -72,10 +83,15 @@ const RSMCache = (() => {
 
   function get(url) {
     try {
-      const raw = localStorage.getItem(keyFor(url));
+      const k = keyFor(url);
+      const raw = localStorage.getItem(k);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || parsed.v !== VERSION) return null;
+      if (isExpired(parsed.savedAt)) {
+        localStorage.removeItem(k); // auto-delete on the check that found it stale
+        return null;
+      }
       return parsed.data;
     } catch (e) {
       return null;
@@ -175,5 +191,69 @@ const RSMCache = (() => {
     return withMeta.slice(0, n);
   }
 
-  return { get, set, has, remove, clearAll, recent, saveFormFields, getFormFields };
+  /**
+   * Marks a given answer-key URL as already submitted to the backend
+   * (Lambda A). Called by submission.js right after a successful send.
+   * Subject to the same 2-day TTL as everything else — after that, a
+   * recalculation of the same URL is treated as fresh again.
+   * @param {string} url
+   */
+  function markSubmitted(url) {
+    try {
+      localStorage.setItem(SUBMITTED_PREFIX + (url || '').trim(), JSON.stringify({ savedAt: Date.now() }));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * @param {string} url
+   * @returns {boolean} true if this URL was already submitted to the
+   * backend within the last 2 days — callers should skip resubmitting.
+   */
+  function isSubmitted(url) {
+    try {
+      const k = SUBMITTED_PREFIX + (url || '').trim();
+      const raw = localStorage.getItem(k);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (isExpired(parsed && parsed.savedAt)) {
+        localStorage.removeItem(k);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Startup sweep: proactively remove anything past its 2-day TTL
+  // across ALL namespaces (result cache, form fields, submitted flags),
+  // not just the ones a user happens to re-check later. Runs once per
+  // page load — cheap, since it's a handful of localStorage reads.
+  function sweepExpired() {
+    try {
+      const allPrefixes = [PREFIX, FORM_PREFIX, SUBMITTED_PREFIX];
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !allPrefixes.some(p => k.indexOf(p) === 0)) continue;
+        try {
+          const parsed = JSON.parse(localStorage.getItem(k));
+          if (isExpired(parsed && parsed.savedAt)) toRemove.push(k);
+        } catch (e) {
+          // Unparseable entry — safe to drop it too.
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    } catch (e) {
+      // localStorage unavailable — nothing to sweep, fail silently.
+    }
+  }
+  sweepExpired();
+
+  return { get, set, has, remove, clearAll, recent, saveFormFields, getFormFields, markSubmitted, isSubmitted };
 })();
+         
