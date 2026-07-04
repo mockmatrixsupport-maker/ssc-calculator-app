@@ -239,19 +239,39 @@
 </footer>
 
 <script src="js/remote-loader.js?v=1"></script>
-<script src="js/native-http.js?v=3"></script>
-<script src="js/cache.js?v=3"></script>
-<script src="js/submission.js?v=1"></script>
-<script src="js/ui-common.js?v=3"></script>
-<script src="js/fetcher-ssc.js?v=3"></script>
-<script src="js/fetcher-rrb.js?v=3"></script>
-<script src="js/fetch-router.js?v=3"></script>
-<script src="js/parser-ssc.js?v=3"></script>
-<script src="js/parser-rrb.js?v=3"></script>
-<script src="js/score-engine.js?v=3"></script>
-<script src="js/pdf-download.js?v=1"></script>
+<script>
+  // IMPORTANT: every other app script is loaded through RSMLoader,
+  // not as plain <script src> tags. This is what actually makes
+  // manifest.json version bumps take effect — a plain <script> tag
+  // always uses whatever file is physically bundled in the installed
+  // APK and NEVER checks manifest.json, no matter how many times you
+  // bump a version number in the repo. Loaded strictly in order so
+  // dependencies between files (e.g. score-engine needing the parsers
+  // already defined) stay intact, same order as before.
+  RSMLoader.loadScripts([
+    { path: 'js/native-http.js',    local: 'js/native-http.js?v=3' },
+    { path: 'js/cache.js',          local: 'js/cache.js?v=3' },
+    { path: 'js/submission.js',     local: 'js/submission.js?v=1' },
+    { path: 'js/ui-common.js',      local: 'js/ui-common.js?v=3' },
+    { path: 'js/fetcher-ssc.js',    local: 'js/fetcher-ssc.js?v=3' },
+    { path: 'js/fetcher-rrb.js',    local: 'js/fetcher-rrb.js?v=3' },
+    { path: 'js/fetch-router.js',   local: 'js/fetch-router.js?v=3' },
+    { path: 'js/parser-ssc.js',     local: 'js/parser-ssc.js?v=3' },
+    { path: 'js/parser-rrb.js',     local: 'js/parser-rrb.js?v=3' },
+    { path: 'js/score-engine.js',   local: 'js/score-engine.js?v=3' },
+    { path: 'js/pdf-download.js',   local: 'js/pdf-download.js?v=1' }
+  ]).then(function () {
+    // Everything below this point assumes all of the above are loaded —
+    // if you have inline code further down the page that calls into
+    // RSMParserRRB, RSMScoreEngine, etc. directly at parse time (not
+    // inside a function/event handler), it needs to move inside this
+    // .then() instead, since loadScripts() is now async.
+    document.dispatchEvent(new Event('rsm-scripts-ready'));
+  });
+</script>
 
 <script>
+document.addEventListener('rsm-scripts-ready', function () {
 const html = document.documentElement;
 const toggleBtn = document.getElementById('themeToggle');
 const iconDark = document.getElementById('iconDark');
@@ -568,6 +588,7 @@ function fillSelect(selectEl, options, opts = {}) {
 
   fetchBtn.addEventListener('click', () => doFetch());
 })();
+}); // end of rsm-scripts-ready wrapper
 </script>
 
 </body>
