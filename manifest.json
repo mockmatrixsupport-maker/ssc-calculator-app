@@ -2,7 +2,7 @@
   "calculators.json": 1,
   "data/exams-ssc.json": 1,
   "data/exams-rrb.json": 1,
-  "data/answerkeys-latest.json": 1,
+  "data/answerkeys-latest.json": 4,
   "data/answerkeys-archive.json": 1,
   "js/native-http.js": 1,
   "js/cache.js": 1,
