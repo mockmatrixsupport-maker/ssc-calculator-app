@@ -176,9 +176,22 @@ const RSMSubmission = (() => {
   function submit(result, meta) {
     if (!isEnabled()) return; // fully silent no-op, by design
 
+    // If this exact answer-key URL was already sent to the backend
+    // (within the last 2 days — see cache.js's TTL), skip resubmitting.
+    // This covers the common case of a candidate reopening/recalculating
+    // the same link again, which would otherwise create a duplicate
+    // submission for the same roll number.
+    if (typeof RSMCache !== 'undefined' && typeof RSMCache.isSubmitted === 'function' && meta.url) {
+      if (RSMCache.isSubmitted(meta.url)) return;
+    }
+
     const payload = buildPayload(result, meta);
     enqueue(payload);
     flushQueue(); // fire-and-forget; failures just stay queued for retry
+
+    if (typeof RSMCache !== 'undefined' && typeof RSMCache.markSubmitted === 'function' && meta.url) {
+      RSMCache.markSubmitted(meta.url);
+    }
   }
 
   // ── Background retry triggers — all silent, all non-blocking:
@@ -197,3 +210,4 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
+   
