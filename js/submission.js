@@ -28,7 +28,7 @@ const RSMSubmission = (() => {
   // ── Set this once your API Gateway endpoint exists.
   // Leave it empty to fully disable submission — silent no-op,
   // zero behavior change anywhere else in the app.
-  const BACKEND_URL = ''; // e.g. 'https://xxxxxxxxxx.execute-api.ap-south-1.amazonaws.com/submit'
+  const BACKEND_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/submit';
 
   const QUEUE_KEY = 'rsm_submission_queue_v1';
   const MAX_QUEUE_SIZE = 200;       // oldest items dropped first past this
@@ -197,4 +197,3 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
-
