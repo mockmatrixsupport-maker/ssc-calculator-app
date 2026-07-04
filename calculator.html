@@ -142,6 +142,19 @@
           </div>
         </div>
 
+        <div class="form-grid-2 mt-4">
+          <div class="form-group">
+            <label class="form-label">Gender <span class="required">*</span></label>
+            <div class="form-select-wrap">
+              <select class="form-select" id="gender" required>
+                <option value="" disabled selected>Select</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- Zone row — only shown when the family config says hasZone: true (e.g. RRB) -->
         <div class="form-grid-2 mt-4 hidden" id="zoneGroup">
           <div class="form-group">
@@ -450,6 +463,7 @@ function fillSelect(selectEl, options, opts = {}) {
     document.getElementById('examUrl'),
     examSelect,
     document.getElementById('category'),
+    document.getElementById('gender'),
     stateEl,
     languageEl,
     document.getElementById('termsCheck')
@@ -476,6 +490,7 @@ function fillSelect(selectEl, options, opts = {}) {
     };
     setSelect(document.getElementById('category'), fields.category);
     setSelect(document.getElementById('horizontalCategory'), fields.horizontalCategory);
+    setSelect(document.getElementById('gender'), fields.gender);
     setSelect(stateEl, fields.state);
     setSelect(languageEl, fields.language);
     if (FAMILY.hasZone) setSelect(document.getElementById('zoneField'), fields.zone);
@@ -508,6 +523,7 @@ function fillSelect(selectEl, options, opts = {}) {
         examId,
         category,
         horizontalCategory: document.getElementById('horizontalCategory').value,
+        gender: document.getElementById('gender').value,
         state,
         language,
         zone: FAMILY.hasZone ? document.getElementById('zoneField').value : undefined
