@@ -67,11 +67,12 @@ const RSMRank = (() => {
   async function fetchRank(ctx) {
     if (!isEnabled()) return null;
 
-    const cached = (typeof RSMCache !== 'undefined' && RSMCache.getRank)
-      ? RSMCache.getRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo)
-      : null;
-    if (cached) return cached;
-
+    // No local device cache — CloudFront (in front of the API) is the
+    // only caching layer. Every call here is a real network request;
+    // CloudFront itself decides whether that's an instant cache hit or
+    // a genuine Lambda run, based on its own TTL. This keeps there
+    // being exactly ONE source of truth for freshness, not two
+    // independent caches that could disagree with each other.
     try {
       const url = `${RANK_API_URL}?examId=${encodeURIComponent(ctx.examId)}`
         + `&date=${encodeURIComponent(ctx.date)}`
@@ -80,12 +81,7 @@ const RSMRank = (() => {
 
       const res = await withTimeout(fetch(url), FETCH_TIMEOUT_MS);
       if (!res.ok) return null;
-      const data = await res.json();
-
-      if (typeof RSMCache !== 'undefined' && RSMCache.setRank) {
-        RSMCache.setRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo, data);
-      }
-      return data;
+      return await res.json();
     } catch (e) {
       return null; // offline / timeout / backend down — render() falls back to N/A
     }
@@ -147,10 +143,12 @@ const RSMRank = (() => {
       avgCard('Shift Average', data.shiftAverage),
       avgCard('Category Average', data.categoryAverage)
     ];
+    if (hasZone) avgCards.push(avgCard('Zone Average', data.zoneAverage));
 
     return `
       <div class="rank-grid">${cards.join('')}</div>
-      <div class="rank-grid rank-grid--avg">${avgCards.join('')}</div>`;
+      <div class="rank-grid rank-grid--avg">${avgCards.join('')}</div>
+      <button type="button" class="rank-refresh-btn" data-rsm-refresh-rank>↻ Refresh Rank</button>`;
   }
 
   /**
@@ -160,6 +158,10 @@ const RSMRank = (() => {
    * the fetch resolves. Never awaited by the caller — fire-and-forget,
    * exactly like submission.js's pattern, so the score display above
    * it is never delayed.
+   *
+   * The exact same load() function runs on initial mount AND every
+   * time the "Refresh Rank" button is tapped — one code path, no
+   * separate "first load" vs "refresh" logic to keep in sync.
    *
    * @param {HTMLElement} containerEl - dedicated rank section element
    * @param {Object} ctx - { examId, date, shift, rollNo, hasZone }
@@ -172,17 +174,32 @@ const RSMRank = (() => {
       return;
     }
 
-    containerEl.innerHTML = loadingSkeleton(ctx.hasZone);
+    function load() {
+      containerEl.innerHTML = loadingSkeleton(ctx.hasZone);
 
-    fetchRank(ctx).then(data => {
-      if (!data || data.found === false) {
-        containerEl.innerHTML = notFoundBlock(!!(data && data.examHasAnyData));
-        return;
-      }
-      containerEl.innerHTML = renderFound(data, ctx.hasZone);
-    }).catch(() => {
-      containerEl.innerHTML = notFoundBlock(false);
-    });
+      fetchRank(ctx).then(data => {
+        if (!data || data.found === false) {
+          containerEl.innerHTML = notFoundBlock(!!(data && data.examHasAnyData)) + refreshButtonHtml();
+        } else {
+          containerEl.innerHTML = renderFound(data, ctx.hasZone);
+        }
+        wireRefreshButton();
+      }).catch(() => {
+        containerEl.innerHTML = notFoundBlock(false) + refreshButtonHtml();
+        wireRefreshButton();
+      });
+    }
+
+    function refreshButtonHtml() {
+      return '<button type="button" class="rank-refresh-btn" data-rsm-refresh-rank>↻ Refresh Rank</button>';
+    }
+
+    function wireRefreshButton() {
+      const btn = containerEl.querySelector('[data-rsm-refresh-rank]');
+      if (btn) btn.addEventListener('click', load);
+    }
+
+    load(); // initial fetch — same function the refresh button calls
   }
 
   return { mount, percentile };
