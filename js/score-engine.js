@@ -265,7 +265,7 @@ const RSMScoreEngine = (() => {
           : {};
 
         RSMRank.mount(rankSectionEl, {
-          examId: meta.examId || (info.exam ? info.exam : null),
+          examId: meta.examId || formFields.examId || (info.exam ? info.exam : null),
           date: info.date || null,
           shift: info.shift || null,
           rollNo: info.rollNo || null,
@@ -324,5 +324,6 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
 
 
