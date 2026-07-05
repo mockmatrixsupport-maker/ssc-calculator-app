@@ -287,6 +287,20 @@ document.getElementById('akViewMore').addEventListener('click', async () => {
 });
 
 loadLatestKeys();
+
+// ── Without this, a fresh manifest check (see remote-loader.js's
+// visibilitychange reset) would happen but nothing would ever act on
+// it — these two functions only ran once, at initial script execution.
+// Re-running them whenever the app returns to foreground is what
+// actually makes an updated manifest.json / answerkeys-latest.json
+// show up without needing to fully close and reopen the app.
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') {
+    loadCalculatorCards();
+    loadLatestKeys();
+  }
+});
 </script>
 </body>
 </html>
+
