@@ -14,5 +14,6 @@
   "js/parser-rrb.js": 1,
   "js/score-engine.js": 1,
   "js/pdf-download.js": 5,
-    "js/submission.js": 2
+    "js/submission.js": 2,
+  "js/rank.js": 2
 }
