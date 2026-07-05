@@ -57,6 +57,25 @@
     return manifestPromise;
   }
 
+  // ── IMPORTANT: Android does not actually kill/restart the app's
+  // WebView process just because it's backgrounded (home button, app
+  // switcher, "closing" the tab) — the same JS process, and therefore
+  // the same manifestPromise, usually stays alive indefinitely. Without
+  // this, every reopen would silently reuse whatever manifest result
+  // was fetched whenever the process first started, no matter how long
+  // ago that was or how many times manifest.json has since been bumped
+  // — updates would then only ever appear on the rare occasion Android
+  // genuinely kills the process under memory pressure. Resetting
+  // manifestPromise on every foreground-return forces a fresh manifest
+  // check each time the app is actually opened/resumed by the user.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') {
+        manifestPromise = null;
+      }
+    });
+  }
+
   function toBlobUrl(code, path) {
     var type = /\.json$/.test(path) ? 'application/json' : 'text/javascript';
     var blob = new Blob([code], { type: type });
@@ -121,3 +140,4 @@
   };
 })();
 
+           
