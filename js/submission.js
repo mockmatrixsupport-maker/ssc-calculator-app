@@ -122,7 +122,6 @@ const RSMSubmission = (() => {
         maxScore: result.maxScore,
         pct: result.pct
       },
-      marking: { correctMark: result.correctMark, wrongMark: result.wrongMark },
       submittedAt: new Date().toISOString()
     };
   }
@@ -210,4 +209,4 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
-   
+
