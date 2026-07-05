@@ -31,44 +31,6 @@ const RSMCache = (() => {
     return !savedAt || (Date.now() - savedAt) > TTL_MS;
   }
 
-  // ── Rank cache — separate, SHORT-lived namespace ──
-  // Ranks are recomputed periodically on the backend (every 30 min when
-  // auto-scheduled, or on-demand). A 2-day TTL would show badly stale
-  // ranks; a 10-min TTL means re-opening the same result within that
-  // window skips a network call, while still refreshing well before
-  // the next real recalculation cycle would matter.
-  const RANK_PREFIX = 'rsm-rank:';
-  const RANK_TTL_MS = 10 * 60 * 1000;
-
-  function rankKeyFor(examId, date, shift, rollNo) {
-    return `${RANK_PREFIX}${examId}|${date}|${shift}|${rollNo}`;
-  }
-
-  function getRank(examId, date, shift, rollNo) {
-    try {
-      const k = rankKeyFor(examId, date, shift, rollNo);
-      const raw = localStorage.getItem(k);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || (Date.now() - parsed.savedAt) > RANK_TTL_MS) {
-        localStorage.removeItem(k);
-        return null;
-      }
-      return parsed.data;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function setRank(examId, date, shift, rollNo, data) {
-    try {
-      localStorage.setItem(rankKeyFor(examId, date, shift, rollNo), JSON.stringify({ savedAt: Date.now(), data }));
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
   function keyFor(url) {
     // Normalise the URL a bit so trivial differences (trailing slash, case
     // in scheme) don't create duplicate cache entries for the same exam.
@@ -272,16 +234,14 @@ const RSMCache = (() => {
   // page load — cheap, since it's a handful of localStorage reads.
   function sweepExpired() {
     try {
-      const allPrefixes = [PREFIX, FORM_PREFIX, SUBMITTED_PREFIX, RANK_PREFIX];
+      const allPrefixes = [PREFIX, FORM_PREFIX, SUBMITTED_PREFIX];
       const toRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (!k || !allPrefixes.some(p => k.indexOf(p) === 0)) continue;
         try {
           const parsed = JSON.parse(localStorage.getItem(k));
-          const savedAt = parsed && parsed.savedAt;
-          const ttl = (k.indexOf(RANK_PREFIX) === 0) ? RANK_TTL_MS : TTL_MS;
-          if (!savedAt || (Date.now() - savedAt) > ttl) toRemove.push(k);
+          if (isExpired(parsed && parsed.savedAt)) toRemove.push(k);
         } catch (e) {
           // Unparseable entry — safe to drop it too.
           toRemove.push(k);
@@ -294,7 +254,7 @@ const RSMCache = (() => {
   }
   sweepExpired();
 
-  return { get, set, has, remove, clearAll, recent, saveFormFields, getFormFields, markSubmitted, isSubmitted, getRank, setRank };
+  return { get, set, has, remove, clearAll, recent, saveFormFields, getFormFields, markSubmitted, isSubmitted };
 })();
          
 
