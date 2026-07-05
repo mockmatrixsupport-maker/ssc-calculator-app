@@ -258,7 +258,40 @@ html.desktop-mode .container { max-width: 1100px; margin: 0 auto; }
 }
 .rank-card__label { font-size: 0.64rem; color: var(--text-muted); margin-bottom: 3px; overflow-wrap: break-word; }
 .rank-card__value { font-size: 0.86rem; font-weight: 700; color: var(--text-primary); overflow-wrap: break-word; font-family: var(--font-mono); }
-.rank-card__pct { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
+.rank-card__divider { height: 1px; background: var(--border); margin: var(--sp-2) 0 6px; border: none; }
+.rank-card__pct { font-size: 0.62rem; color: var(--text-muted); }
+
+/* ── Rank loading skeleton (blinking) ── */
+@keyframes rsm-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+.rank-card--loading { animation: rsm-pulse 1.3s ease-in-out infinite; }
+.skeleton-line {
+  background: var(--border);
+  border-radius: var(--r-sm);
+  height: 10px;
+}
+.skeleton-line--label { width: 60%; margin-bottom: 6px; }
+.skeleton-line--value { width: 45%; height: 14px; margin-bottom: 8px; }
+.skeleton-line--pct { width: 70%; height: 8px; }
+
+.rank-status {
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  text-align: center;
+  font-size: 0.72rem;
+}
+.rank-status--loading {
+  color: var(--text-muted);
+  animation: rsm-pulse 1.3s ease-in-out infinite;
+}
+.rank-status--na {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
 
 /* ── Toast ── */
 .rsm-toast {
@@ -283,3 +316,4 @@ html.desktop-mode .container { max-width: 1100px; margin: 0 auto; }
 @media (min-width: 560px) {
   .rank-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
