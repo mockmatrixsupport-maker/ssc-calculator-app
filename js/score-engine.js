@@ -256,11 +256,22 @@ const RSMScoreEngine = (() => {
     try {
       const rankSectionEl = cardEl && cardEl.querySelector('[data-rsm-rank-section]');
       if (rankSectionEl && typeof RSMRank !== 'undefined') {
+        // formFields (category/gender/zone) are cached separately by
+        // URL — same source submission.js already reads from — so the
+        // rank request can include them directly, letting get-rank
+        // skip an extra Submissions table read entirely.
+        const formFields = (typeof RSMCache !== 'undefined' && RSMCache.getFormFields && meta.url)
+          ? (RSMCache.getFormFields(meta.url) || {})
+          : {};
+
         RSMRank.mount(rankSectionEl, {
           examId: meta.examId || (info.exam ? info.exam : null),
           date: info.date || null,
           shift: info.shift || null,
           rollNo: info.rollNo || null,
+          category: formFields.category || null,
+          gender: formFields.gender || null,
+          zone: formFields.zone || null,
           hasZone
         });
       }
@@ -313,6 +324,5 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
-
 
 
