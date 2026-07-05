@@ -97,30 +97,13 @@ const RSMScoreEngine = (() => {
       totalScore: Number(totalScore.toFixed(2)),
       maxScore: Number(maxScore.toFixed(2)),
       pct,
-      correctMark, wrongMark,
-      // ── Placeholders for a future backend. Structure is final;
-      // values are null/N-A until rank/normalisation service exists.
-      // These are ALWAYS excluded from cache — see run() below.
-      ranks: {
-        overallRank: null, overallTotal: null, overallPercentile: null,
-        shiftRank: null, shiftTotal: null, shiftPercentile: null,
-        categoryRank: null, categoryTotal: null, categoryPercentile: null,
-        overallZoneRank: null, overallZoneTotal: null, overallZonePercentile: null,
-        shiftZoneRank: null, shiftZoneTotal: null, shiftZonePercentile: null,
-        categoryZoneRank: null, categoryZoneTotal: null, categoryZonePercentile: null,
-        averageMarks: null, shiftAverageMarks: null, categoryAverageMarks: null
-      },
-      normalised: { new: null, old: null }
+      correctMark, wrongMark
+      // NOTE: rank/percentile/average are NOT computed or stored here
+      // at all anymore — see rank.js. They're fetched asynchronously
+      // and mounted into their own dedicated section after the score
+      // above is already rendered, so a slow/failed rank fetch can
+      // never delay or block the score itself.
     };
-  }
-
-  function fmtRankPair(obj, rankKey, totalKey) {
-    if (!obj || obj[rankKey] == null || obj[totalKey] == null) return 'N/A';
-    return `${obj[rankKey]}/${obj[totalKey]}`;
-  }
-  function fmtVal(obj, key, suffix) {
-    if (!obj || obj[key] == null) return 'N/A';
-    return suffix ? `${obj[key]}${suffix}` : String(obj[key]);
   }
 
   // ── Candidate detail rows, in display order, only if present ──
@@ -192,66 +175,6 @@ const RSMScoreEngine = (() => {
       </div>`;
   }
 
-  // hasZone: true only for exams that actually have a zone concept
-  // (e.g. RRB). SSC has no zone field on the form at all, so those
-  // 3 extra cards are simply not shown there — not "N/A", just absent.
-  // For zone-aware exams, the cards ARE shown but read "N/A" until a
-  // backend ranking service supplies real zone data — that's expected
-  // and not an error state.
-  function buildRankGrid(ranks, hasZone) {
-    const baseCards = [
-      ['Overall Rank', fmtRankPair(ranks, 'overallRank', 'overallTotal'), fmtVal(ranks, 'overallPercentile')],
-      ['Shift Rank', fmtRankPair(ranks, 'shiftRank', 'shiftTotal'), fmtVal(ranks, 'shiftPercentile')],
-      ['Category Rank', fmtRankPair(ranks, 'categoryRank', 'categoryTotal'), fmtVal(ranks, 'categoryPercentile')]
-    ];
-    const zoneCards = [
-      ['Overall Rank (Zone)', fmtRankPair(ranks, 'overallZoneRank', 'overallZoneTotal'), fmtVal(ranks, 'overallZonePercentile')],
-      ['Shift Rank (Zone)', fmtRankPair(ranks, 'shiftZoneRank', 'shiftZoneTotal'), fmtVal(ranks, 'shiftZonePercentile')],
-      ['Category Rank (Zone)', fmtRankPair(ranks, 'categoryZoneRank', 'categoryZoneTotal'), fmtVal(ranks, 'categoryZonePercentile')]
-    ];
-    const cards = hasZone ? baseCards.concat(zoneCards) : baseCards;
-    return `
-      <div class="rank-grid">
-        ${cards.map(([label, val, pct]) => `
-          <div class="rank-card">
-            <div class="rank-card__label">${esc(label)}</div>
-            <div class="rank-card__value">${esc(val)}</div>
-            <div class="rank-card__pct">Percentile: ${esc(pct)}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  function buildAverageGrid(ranks) {
-    const cards = [
-      ['Average Marks', fmtVal(ranks, 'averageMarks')],
-      ['Shift Average Marks', fmtVal(ranks, 'shiftAverageMarks')],
-      ['Category Average Marks', fmtVal(ranks, 'categoryAverageMarks')]
-    ];
-    return `
-      <div class="rank-grid rank-grid--avg">
-        ${cards.map(([label, val]) => `
-          <div class="rank-card">
-            <div class="rank-card__label">${esc(label)}</div>
-            <div class="rank-card__value">${esc(val)}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-
-  function buildNormalisedRow(normalised) {
-    const n = normalised || {};
-    return `
-      <div class="rank-grid rank-grid--norm">
-        <div class="rank-card">
-          <div class="rank-card__label">Normalised Score (New)</div>
-          <div class="rank-card__value">${n.new == null ? 'N/A' : esc(n.new)}</div>
-        </div>
-        <div class="rank-card">
-          <div class="rank-card__label">Normalised Score (Old)</div>
-          <div class="rank-card__value">${n.old == null ? 'N/A' : esc(n.old)}</div>
-        </div>
-      </div>`;
-  }
-
   const ICONS = {
     newUrl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>',
@@ -301,10 +224,7 @@ const RSMScoreEngine = (() => {
         ${buildActionRows()}
 
         <div class="rank-banner">Your Rank Among All Candidates</div>
-        ${buildRankGrid(r.ranks, hasZone)}
-        ${buildAverageGrid(r.ranks)}
-        ${buildNormalisedRow(r.normalised)}
-        <div class="result-card__footnote">Rank, percentile &amp; normalised score will appear here once backend ranking is connected.</div>
+        <div class="rank-section" data-rsm-rank-section></div>
       </div>`;
 
     containerEl.classList.remove('hidden');
@@ -325,6 +245,26 @@ const RSMScoreEngine = (() => {
       RSMUI.attachResultActions(cardEl, meta.uiCtx || {}, { url: meta.url, family: meta.family });
       if (meta.uiCtx) RSMUI.enterResultMode(meta.uiCtx, meta.url);
     }
+
+    // ── Mount the rank section — fire-and-forget, exactly like
+    // submission.js's pattern. This runs on BOTH a fresh calculation
+    // AND a cache-loaded result (renderInto is the single shared path
+    // for both), since rank data has its own independent 10-min cache
+    // lifecycle regardless of how old the cached SCORE itself is.
+    // A slow/failed/missing rank.js can never delay or break the score
+    // display above it — wrapped in try/catch as extra insurance.
+    try {
+      const rankSectionEl = cardEl && cardEl.querySelector('[data-rsm-rank-section]');
+      if (rankSectionEl && typeof RSMRank !== 'undefined') {
+        RSMRank.mount(rankSectionEl, {
+          examId: meta.examId || (info.exam ? info.exam : null),
+          date: info.date || null,
+          shift: info.shift || null,
+          rollNo: info.rollNo || null,
+          hasZone
+        });
+      }
+    } catch (e) { /* silent by design — rank display must never break the score card */ }
   }
 
   /**
@@ -363,19 +303,16 @@ const RSMScoreEngine = (() => {
     } catch (e) { /* silent by design — submission must never surface to the UI */ }
 
     // Cache only now — fetch + successful calculation both happened.
-    // Dynamic fields (ranks, normalised score) are stripped before
-    // saving: they must always be N/A-on-load, never stale-from-cache,
-    // until a live ranking backend exists.
-    const cacheSafeResult = Object.assign({}, result, {
-      ranks: null,
-      normalised: null
-    });
-    RSMFetchRouter.saveCalculatedResult(sourceUrl, family, parts, Object.keys(parts).length, cacheSafeResult);
+    // No rank/normalised stripping needed here anymore — calculate()
+    // never includes those fields at all; rank.js handles that data
+    // entirely separately, with its own short-lived cache (see cache.js).
+    RSMFetchRouter.saveCalculatedResult(sourceUrl, family, parts, Object.keys(parts).length, result);
 
     return result;
   }
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
 
 
