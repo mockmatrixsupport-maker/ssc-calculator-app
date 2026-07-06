@@ -1,7 +1,7 @@
 [
   { "id": "ssc-cgl-tier3",     "title": "SSC CGL — Tier I 2026",              "correct": 2, "wrong": 0.5 },
   { "id": "ssc-cgl-tier1",     "title": "SSC CGL — Tier I 2025",              "correct": 2, "wrong": 0.5 },
-  { "id": "ssc-cgl-tier2",     "title": "SSC CGL — Tier II",             "correct": 3, "wrong": 1 },
+  { "id": "ssc-cgl-tier2",     "title": "SSC CGL — Tier I",             "correct": 3, "wrong": 1 },
   { "id": "ssc-chsl-tier1",    "title": "SSC CHSL — Tier I",             "correct": 2, "wrong": 0.5 },
   { "id": "ssc-chsl-tier2",    "title": "SSC CHSL — Tier II",            "correct": 3, "wrong": 1 },
   { "id": "ssc-cpo-tier1",     "title": "SSC CPO — Paper I",             "correct": 1, "wrong": 0.25 },
