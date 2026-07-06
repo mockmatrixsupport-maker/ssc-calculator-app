@@ -1,0 +1,35 @@
+name: Purge jsDelivr Cache
+
+# Runs every time one of these JSON files changes — jsDelivr's CDN
+# cache needs invalidating after EVERY update, not just once. Also
+# runnable manually if you ever need to force a purge outside a push
+# (e.g. jsDelivr served stale data for some unrelated reason).
+on:
+  push:
+    paths:
+      - 'calculators.json'
+      - 'data/exams-ssc.json'
+      - 'data/exams-rrb.json'
+      - 'data/answerkeys-latest.json'
+      - 'data/answerkeys-archive.json'
+  workflow_dispatch:
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge jsDelivr cache for all live-loaded JSON files
+        run: |
+          FILES=(
+            "calculators.json"
+            "data/exams-ssc.json"
+            "data/exams-rrb.json"
+            "data/answerkeys-latest.json"
+            "data/answerkeys-archive.json"
+          )
+          for f in "${FILES[@]}"; do
+            echo "Purging: $f"
+            curl -s "https://purge.jsdelivr.net/gh/mockmatrixsupport-maker/ssc-calculator-app@main/$f"
+            echo ""
+          done
+
