@@ -30,7 +30,7 @@ const RSMRank = (() => {
   // Set once your GET /rank endpoint exists (Lambda + API Gateway route).
   // Leave empty to make this module a silent no-op — shows "N/A" on
   // every card without ever attempting a network call.
-  const RANK_API_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'; // e.g. 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'
+  const RANK_API_URL = ''; // e.g. 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'
 
   const FETCH_TIMEOUT_MS = 6000;
 
@@ -62,17 +62,17 @@ const RSMRank = (() => {
 
   /**
    * @param {Object} ctx - { examId, date, shift, rollNo }
+   * @param {boolean} forceFresh - if true, skips the cache entirely
    * @returns {Promise<Object|null>} rank payload, or null on any failure
    */
-  async function fetchRank(ctx) {
+  async function fetchRank(ctx, forceFresh) {
     if (!isEnabled()) return null;
 
-    // No local device cache — CloudFront (in front of the API) is the
-    // only caching layer. Every call here is a real network request;
-    // CloudFront itself decides whether that's an instant cache hit or
-    // a genuine Lambda run, based on its own TTL. This keeps there
-    // being exactly ONE source of truth for freshness, not two
-    // independent caches that could disagree with each other.
+    if (!forceFresh && typeof RSMCache !== 'undefined' && RSMCache.getRank) {
+      const cached = RSMCache.getRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo);
+      if (cached) return cached;
+    }
+
     try {
       const url = `${RANK_API_URL}?examId=${encodeURIComponent(ctx.examId)}`
         + `&date=${encodeURIComponent(ctx.date)}`
@@ -84,7 +84,12 @@ const RSMRank = (() => {
 
       const res = await withTimeout(fetch(url), FETCH_TIMEOUT_MS);
       if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json();
+
+      if (typeof RSMCache !== 'undefined' && RSMCache.setRank) {
+        RSMCache.setRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo, data);
+      }
+      return data;
     } catch (e) {
       return null; // offline / timeout / backend down — render() falls back to N/A
     }
@@ -177,10 +182,10 @@ const RSMRank = (() => {
       return;
     }
 
-    function load() {
+    function load(forceFresh) {
       containerEl.innerHTML = loadingSkeleton(ctx.hasZone);
 
-      fetchRank(ctx).then(data => {
+      fetchRank(ctx, forceFresh).then(data => {
         if (!data || data.found === false) {
           containerEl.innerHTML = notFoundBlock(!!(data && data.examHasAnyData)) + refreshButtonHtml();
         } else {
@@ -199,11 +204,14 @@ const RSMRank = (() => {
 
     function wireRefreshButton() {
       const btn = containerEl.querySelector('[data-rsm-refresh-rank]');
-      if (btn) btn.addEventListener('click', load);
+      // Refresh always forces a real network call, bypassing the
+      // 30-min cache entirely — a deliberate manual override.
+      if (btn) btn.addEventListener('click', () => load(true));
     }
 
-    load(); // initial fetch — same function the refresh button calls
+    load(false); // initial mount — cache-first
   }
 
   return { mount, percentile };
 })();
+
