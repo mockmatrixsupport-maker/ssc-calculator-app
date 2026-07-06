@@ -313,7 +313,7 @@ function loadJSONLiveAwait(path, cacheKey, onLateUpdate) {
   return new Promise((resolve) => {
     let resolved = false;
     if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
-      RSMLoader.loadJSONLive(path, cacheKey, (data, fromCache) => {
+      RSMLoader.loadJSONLive(path, cacheKey, path, (data, fromCache) => {
         if (!resolved) {
           resolved = true;
           resolve(data || []);
