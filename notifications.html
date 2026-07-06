@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Notifications — Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.notif-item { display: block; padding: 14px 4px; border-bottom: 1px solid var(--rule); text-decoration: none; }
+.notif-item:last-child { border-bottom: none; }
+.notif-item--unread { background: var(--bg-card-hover); }
+.notif-item__title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+.notif-item__body { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.notif-item__time { font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; }
+.notif-empty { text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--text-muted); font-size: 0.82rem; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__inner">
+    <a href="index.html" class="app-logo">
+      <img src="logo.jpg" alt="Rank Score Master" class="app-logo__icon">
+      <div class="app-logo__text">
+        <span class="app-logo__name">Notifications</span>
+      </div>
+    </a>
+  </div>
+</header>
+
+<main class="page-main">
+  <div class="container">
+    <a href="index.html" class="btn-back fade-up" style="margin-bottom: var(--sp-5);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to Home
+    </a>
+
+    <div class="card fade-up fade-up-1">
+      <div id="notifList"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+function render() {
+  var list = (window.RSMNotif ? RSMNotif.getHistory() : []);
+  var container = document.getElementById('notifList');
+
+  if (!list.length) {
+    container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+    return;
+  }
+
+  container.innerHTML = list.map(function (n) {
+    var dt = n.sentAt ? new Date(n.sentAt) : null;
+    var timeStr = dt ? dt.toLocaleString() : '';
+    var target = (n.path && n.path.trim()) ? n.path.trim() : 'index.html';
+    return '<a href="' + target + '" class="notif-item ' + (n.read ? '' : 'notif-item--unread') + '">' +
+      '<div class="notif-item__title">' + escapeHtml(n.title) + '</div>' +
+      '<div class="notif-item__body">' + escapeHtml(n.body) + '</div>' +
+      '<div class="notif-item__time">' + timeStr + '</div>' +
+      '</a>';
+  }).join('');
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+render();
+if (window.RSMNotif) RSMNotif.markAllRead();
+</script>
+
+<script src="js/push-notifications.js"></script>
+</body>
+</html>

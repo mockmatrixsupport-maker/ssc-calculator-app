@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Send Notification — Admin</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; background: #f5f5f4; margin: 0; padding: 24px 16px; }
+  .card { max-width: 420px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  h1 { font-size: 1.1rem; margin: 0 0 20px; }
+  label { display: block; font-size: 0.78rem; font-weight: 600; color: #555; margin: 14px 0 6px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; font-family: inherit; }
+  textarea { min-height: 80px; resize: vertical; }
+  button { width: 100%; margin-top: 20px; padding: 12px; background: #0f766e; color: #fff; border: none; border-radius: 8px; font-size: 0.92rem; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.6; }
+  .status { margin-top: 14px; font-size: 0.82rem; padding: 10px 12px; border-radius: 8px; display: none; }
+  .status--ok { background: #ecfdf5; color: #065f46; display: block; }
+  .status--err { background: #fef2f2; color: #991b1b; display: block; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Send Push Notification</h1>
+
+    <label>Admin Password</label>
+    <input type="password" id="password" autocomplete="off">
+
+    <label>Title</label>
+    <input type="text" id="title" placeholder="e.g. SSC CGL Tier I Answer Key Released" maxlength="80">
+
+    <label>Message</label>
+    <textarea id="message" placeholder="e.g. The official answer key is now live. Tap to check your score."></textarea>
+
+    <label>Page Path (optional)</label>
+    <input type="text" id="path" placeholder="e.g. calculator.html?family=ssc&exam=ssc-cgl-tier1">
+    <div style="font-size:0.72rem;color:#888;margin-top:4px;">Leave blank to open the home screen when tapped.</div>
+
+    <button id="sendBtn">Send to All Users</button>
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const password = document.getElementById('password').value;
+  const title = document.getElementById('title').value.trim();
+  const message = document.getElementById('message').value.trim();
+  const path = document.getElementById('path').value.trim();
+  const statusEl = document.getElementById('status');
+  const btn = document.getElementById('sendBtn');
+
+  statusEl.className = 'status';
+  statusEl.textContent = '';
+
+  if (!password || !title || !message) {
+    statusEl.className = 'status status--err';
+    statusEl.textContent = 'Please fill in all fields.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const res = await fetch('/api/send-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, title, message, path })
+    });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      statusEl.className = 'status status--ok';
+      statusEl.textContent = 'Sent! Delivery to devices may take a few seconds.';
+      document.getElementById('title').value = '';
+      document.getElementById('message').value = '';
+      document.getElementById('path').value = '';
+    } else {
+      statusEl.className = 'status status--err';
+      statusEl.textContent = data.error || 'Send failed.';
+    }
+  } catch (e) {
+    statusEl.className = 'status status--err';
+    statusEl.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send to All Users';
+  }
+});
+</script>
+</body>
+</html>
