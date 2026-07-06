@@ -136,8 +136,54 @@
       }
       var r2 = await fetch(localFallbackUrl);
       return r2.json();
+    },
+
+    /**
+     * For fast-changing JSON data (answer keys, exam lists) where the
+     * manifest-check round-trip is unnecessary overhead. NO manifest
+     * involved at all — fetches directly from jsDelivr's GitHub CDN
+     * mirror (faster edge delivery than raw.githubusercontent.com,
+     * especially from India), every single time this is called.
+     *
+     * Pattern ("stale-while-revalidate"):
+     *   1. If a cached copy exists, onData(cached, true) fires
+     *      IMMEDIATELY — the screen shows something with zero wait.
+     *   2. A fresh fetch always starts in the background regardless.
+     *   3. If it succeeds, onData(fresh, false) fires and the cache
+     *      is updated — the UI silently refreshes in place.
+     *   4. If it fails (offline, etc.), the cached version (already
+     *      shown in step 1) just stays as-is — no error shown.
+     *
+     * @param {string} path - e.g. 'data/answerkeys-latest.json'
+     * @param {string} cacheKey - localStorage key for this file's cache
+     * @param {function(data, fromCache)} onData - called once per stage
+     */
+    loadJSONLive: function (path, cacheKey, onData) {
+      var JSDELIVR_BASE = 'https://cdn.jsdelivr.net/gh/' + GH_USER + '/' + GH_REPO + '@' + GH_BRANCH + '/';
+
+      try {
+        var cachedRaw = localStorage.getItem(LS_PREFIX + cacheKey);
+        if (cachedRaw) {
+          onData(JSON.parse(cachedRaw), true);
+        }
+      } catch (e) { /* corrupt cache entry — ignore, fresh fetch below still runs */ }
+
+      fetch(JSDELIVR_BASE + path + '?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('bad status ' + r.status);
+          return r.json();
+        })
+        .then(function (fresh) {
+          try { localStorage.setItem(LS_PREFIX + cacheKey, JSON.stringify(fresh)); } catch (e) {}
+          onData(fresh, false);
+        })
+        .catch(function () {
+          // Offline / jsDelivr hiccup / bad JSON — the cached version
+          // shown in step 1 (if any) simply remains on screen.
+        });
     }
   };
 })();
 
            
+
