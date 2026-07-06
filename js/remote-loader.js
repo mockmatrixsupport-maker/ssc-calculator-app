@@ -145,30 +145,37 @@
      * mirror (faster edge delivery than raw.githubusercontent.com,
      * especially from India), every single time this is called.
      *
-     * Pattern ("stale-while-revalidate"):
+     * Pattern ("stale-while-revalidate"), in priority order:
      *   1. If a cached copy exists, onData(cached, true) fires
      *      IMMEDIATELY — the screen shows something with zero wait.
-     *   2. A fresh fetch always starts in the background regardless.
-     *   3. If it succeeds, onData(fresh, false) fires and the cache
+     *   2. If NOTHING is cached yet (first-ever open, or cache was
+     *      cleared) AND the device has no signal yet, the BUNDLED
+     *      local copy (shipped inside the APK) is shown instead of a
+     *      blank screen — onData(bundled, true) fires.
+     *   3. A fresh fetch always starts in the background regardless.
+     *   4. If it succeeds, onData(fresh, false) fires and the cache
      *      is updated — the UI silently refreshes in place.
-     *   4. If it fails (offline, etc.), the cached version (already
-     *      shown in step 1) just stays as-is — no error shown.
+     *   5. If it fails (offline, etc.), whatever was already shown in
+     *      step 1/2 just stays as-is — no error shown.
      *
      * @param {string} path - e.g. 'data/answerkeys-latest.json'
      * @param {string} cacheKey - localStorage key for this file's cache
+     * @param {string} localFallbackUrl - bundled copy shipped in the APK
      * @param {function(data, fromCache)} onData - called once per stage
      */
-    loadJSONLive: function (path, cacheKey, onData) {
+    loadJSONLive: function (path, cacheKey, localFallbackUrl, onData) {
       var JSDELIVR_BASE = 'https://cdn.jsdelivr.net/gh/' + GH_USER + '/' + GH_REPO + '@' + GH_BRANCH + '/';
+      var shownSomething = false;
 
       try {
         var cachedRaw = localStorage.getItem(LS_PREFIX + cacheKey);
         if (cachedRaw) {
           onData(JSON.parse(cachedRaw), true);
+          shownSomething = true;
         }
-      } catch (e) { /* corrupt cache entry — ignore, fresh fetch below still runs */ }
+      } catch (e) { /* corrupt cache entry — fall through to bundled/live below */ }
 
-      fetch(JSDELIVR_BASE + path + '?t=' + Date.now(), { cache: 'no-store' })
+      var freshPromise = fetch(JSDELIVR_BASE + path + '?t=' + Date.now(), { cache: 'no-store' })
         .then(function (r) {
           if (!r.ok) throw new Error('bad status ' + r.status);
           return r.json();
@@ -176,11 +183,20 @@
         .then(function (fresh) {
           try { localStorage.setItem(LS_PREFIX + cacheKey, JSON.stringify(fresh)); } catch (e) {}
           onData(fresh, false);
+          shownSomething = true;
         })
         .catch(function () {
-          // Offline / jsDelivr hiccup / bad JSON — the cached version
-          // shown in step 1 (if any) simply remains on screen.
+          // Live fetch failed — if nothing was shown yet (no cache,
+          // this is a first-ever open), fall back to the bundled copy
+          // shipped inside the APK rather than leaving the screen blank.
+          if (!shownSomething && localFallbackUrl) {
+            fetch(localFallbackUrl).then(function (r) { return r.json(); }).then(function (bundled) {
+              onData(bundled, true);
+            }).catch(function () { /* even the bundled file failed to load — nothing more to try */ });
+          }
         });
+
+      return freshPromise;
     }
   };
 })();
