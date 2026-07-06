@@ -28,7 +28,7 @@ jobs:
         run: |
           mkdir -p www
           cp index.html calculator.html www/
-          cp calculators.json manifest.json www/
+          cp calculators.json www/
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
           cp -r js www/
