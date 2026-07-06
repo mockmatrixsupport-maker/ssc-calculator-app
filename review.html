@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Review Paper — Rank Score Master">
+<meta name="theme-color" content="#0f766e">
+<title>Review Paper — Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<link rel="stylesheet" href="css/review.css?v=1">
+
+<!-- MathJax — renders any \( \) / $$ $$ math carried over from RRB
+     source content (e.g. fraction/root formulas typed as LaTeX-ish
+     text). Matches the exact config already used elsewhere in the app. -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  chtml: {
+    mtextInheritFont: true,
+    displayAlign: 'left',
+    linebreaks: {
+      allow: true,
+      width: 'container',
+      overflow: 'linebreak'
+    }
+  },
+  options: {
+    skipHtmlTags: ['script', 'style', 'textarea', 'pre']
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+
+<div class="review-topbar">
+  <button type="button" class="review-back-btn" id="reviewBackBtn" aria-label="Back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <button type="button" class="review-back-btn" id="reviewPaletteBtn" aria-label="Question palette">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <div class="review-topbar__title">
+    <h1 id="reviewTitle">Review Paper</h1>
+    <span id="reviewSubtitle"></span>
+  </div>
+  <div class="review-brand">
+    <img src="logo.jpg" alt="Rank Score Master">
+    <span>Rank Score Master</span>
+  </div>
+</div>
+
+<div class="review-filterbar" id="reviewFilterbar"></div>
+
+<div class="review-loading" id="reviewLoading">
+  <div class="review-spinner"></div>
+  Preparing your review paper…
+</div>
+
+<div class="review-error hidden" id="reviewError">
+  This review session has expired or wasn't found.<br>
+  Please go back and tap <b>Review Paper</b> again from your result.
+</div>
+
+<div class="review-body hidden" id="reviewRoot">
+  <div id="reviewBody"></div>
+</div>
+
+<!-- Side palette — slides in from the right, like a test-taking app's
+     question navigator. Shows numbered buttons for whichever filter is
+     currently active (Wrong/Correct/Skipped/Bonus/All), colored by
+     status, using the SAME qno the source HTML carries. Tapping a
+     number scrolls straight to that question's card. -->
+<div class="review-palette-backdrop" id="reviewPaletteBackdrop"></div>
+<div class="review-palette" id="reviewPalette">
+  <div class="review-palette__head">
+    <span>Questions — <span id="reviewPaletteFilterLabel">Wrong</span></span>
+    <button type="button" class="review-palette__close" id="reviewPaletteClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="review-palette__legend">
+    <span><i class="review-dot correct"></i>Correct</span>
+    <span><i class="review-dot wrong"></i>Wrong</span>
+    <span><i class="review-dot skipped"></i>Skipped</span>
+    <span><i class="review-dot bonus"></i>Bonus</span>
+  </div>
+  <div class="review-palette__grid" id="reviewPaletteGrid"></div>
+</div>
+
+<script src="js/review-json-builder.js?v=1"></script>
+<script src="js/review.js?v=1"></script>
+<script>
+// Match whichever theme the person had active on the calculator page —
+// read the same localStorage key ui-common.js's theme toggle uses, so
+// Review Paper never jarringly opens in the opposite theme.
+(function () {
+  try {
+    const t = localStorage.getItem('rsm-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
