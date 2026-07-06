@@ -206,23 +206,31 @@ function loadJSON(path) {
 }
 
 // ── Calculator cards ──────────────────────────────────────────────
-async function loadCalculatorCards() {
+function renderCalculatorCards(families) {
   const stack = document.getElementById('calcStack');
-  try {
-    const families = await loadJSON('calculators.json');
-    stack.innerHTML = families.map(f => `
-      <a href="calculator.html?family=${encodeURIComponent(f.id)}" class="calc-card">
-        <img src="${f.logo}" alt="${f.id.toUpperCase()}" class="calc-icon">
-        <div class="calc-card__body">
-          <div class="calc-card__title">${f.title}</div>
-          <div class="calc-card__sub">${f.cardSub}</div>
-        </div>
-        <div class="calc-card__arrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </div>
-      </a>`).join('');
-  } catch (e) {
-    stack.innerHTML = '<div class="ak-empty">Could not load calculators.<br>Please try again later.</div>';
+  stack.innerHTML = families.map(f => `
+    <a href="calculator.html?family=${encodeURIComponent(f.id)}" class="calc-card">
+      <img src="${f.logo}" alt="${f.id.toUpperCase()}" class="calc-icon">
+      <div class="calc-card__body">
+        <div class="calc-card__title">${f.title}</div>
+        <div class="calc-card__sub">${f.cardSub}</div>
+      </div>
+      <div class="calc-card__arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </a>`).join('');
+}
+
+function loadCalculatorCards() {
+  const stack = document.getElementById('calcStack');
+  if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
+    RSMLoader.loadJSONLive('calculators.json', 'calculators', (data, fromCache) => {
+      renderCalculatorCards(data || []);
+    });
+  } else {
+    fetch('calculators.json').then(r => r.json()).then(renderCalculatorCards).catch(() => {
+      stack.innerHTML = '<div class="ak-empty">Could not load calculators.<br>Please try again later.</div>';
+    });
   }
 }
 loadCalculatorCards();
@@ -232,13 +240,23 @@ let latestKeys = [];
 let archiveKeys = null;   // null = not fetched yet
 let akExpanded = false;
 
-async function loadLatestKeys() {
+function loadLatestKeys() {
   const list = document.getElementById('akList');
-  try {
-    latestKeys = await loadJSON('data/answerkeys-latest.json');
-    renderAnswerKeys();
-  } catch (e) {
-    list.innerHTML = '<div class="ak-empty">Could not load answer keys.<br>Please try again later.</div>';
+  if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
+    RSMLoader.loadJSONLive('data/answerkeys-latest.json', 'answerkeys-latest', (data, fromCache) => {
+      latestKeys = data || [];
+      renderAnswerKeys();
+      // fromCache=true → this is the instant cached render, no wait.
+      // fromCache=false → fresh data just arrived, silently updated.
+    });
+  } else {
+    // RSMLoader unavailable (shouldn't happen) — fall back to a plain fetch.
+    fetch('data/answerkeys-latest.json').then(r => r.json()).then(data => {
+      latestKeys = data || [];
+      renderAnswerKeys();
+    }).catch(() => {
+      list.innerHTML = '<div class="ak-empty">Could not load answer keys.<br>Please try again later.</div>';
+    });
   }
 }
 
@@ -271,15 +289,29 @@ function renderAnswerKeys() {
   viewMoreBtn.textContent = akExpanded ? 'Show less' : 'View more answer keys';
 }
 
-document.getElementById('akViewMore').addEventListener('click', async () => {
+document.getElementById('akViewMore').addEventListener('click', () => {
   const btn = document.getElementById('akViewMore');
   if (!akExpanded && archiveKeys === null) {
     btn.disabled = true;
     btn.textContent = 'Loading…';
-    try {
-      archiveKeys = await loadJSON('data/answerkeys-archive.json');
-    } catch (e) {
-      archiveKeys = [];
+    if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
+      RSMLoader.loadJSONLive('data/answerkeys-archive.json', 'answerkeys-archive', (data) => {
+        archiveKeys = data || [];
+        akExpanded = true;
+        renderAnswerKeys();
+      });
+      return; // renderAnswerKeys() above already handles both cache+fresh calls
+    } else {
+      fetch('data/answerkeys-archive.json').then(r => r.json()).then(data => {
+        archiveKeys = data || [];
+        akExpanded = true;
+        renderAnswerKeys();
+      }).catch(() => {
+        archiveKeys = [];
+        akExpanded = true;
+        renderAnswerKeys();
+      });
+      return;
     }
   }
   akExpanded = !akExpanded;
@@ -288,12 +320,13 @@ document.getElementById('akViewMore').addEventListener('click', async () => {
 
 loadLatestKeys();
 
-// ── Without this, a fresh manifest check (see remote-loader.js's
-// visibilitychange reset) would happen but nothing would ever act on
-// it — these two functions only ran once, at initial script execution.
-// Re-running them whenever the app returns to foreground is what
-// actually makes an updated manifest.json / answerkeys-latest.json
-// show up without needing to fully close and reopen the app.
+// ── loadCalculatorCards() and loadLatestKeys() now use
+// RSMLoader.loadJSONLive() — no manifest.json involved at all. Every
+// call shows cached data instantly (if present) and independently
+// fetches fresh data directly from jsDelivr in the background,
+// updating the screen silently when it arrives. Re-calling them here
+// on foreground-return just repeats that same cache-then-refresh
+// cycle — not a separate "reset a version check" mechanism anymore.
 document.addEventListener('visibilitychange', function () {
   if (document.visibilityState === 'visible') {
     loadCalculatorCards();
@@ -303,4 +336,5 @@ document.addEventListener('visibilitychange', function () {
 </script>
 </body>
 </html>
+
 
