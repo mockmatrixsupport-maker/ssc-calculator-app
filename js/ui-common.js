@@ -483,6 +483,48 @@ const RSMUI = (() => {
     }
   }
 
+  // ── Review Paper handoff ──
+  // Builds the richer review JSON (full question/option text + image
+  // URLs, not just the qno+status score-engine.js needs) fresh, on
+  // demand, from the SAME raw HTML `parts` already sitting in memory on
+  // the result card (cardEl._rsmPdfData.parts — the same stash
+  // pdf-download.js reads). Nothing here is written to RSMCache/
+  // localStorage: the JSON is handed to review.html through
+  // sessionStorage under one short-lived key that review.js deletes the
+  // instant it reads it (and again on unload), so no generated review
+  // data is ever left sitting in app storage once the person navigates
+  // back — exactly the "don't keep it cached, only keep it while the
+  // page is open" behaviour that was asked for.
+  const REVIEW_HANDOFF_KEY = 'rsm-review-handoff';
+
+  function openReviewPaper(cardEl, meta) {
+    if (typeof RSMReviewBuilder === 'undefined') {
+      toast('Review module failed to load — refresh and try again');
+      return;
+    }
+    const pdfData = cardEl && cardEl._rsmPdfData;
+    const parts = pdfData && pdfData.parts;
+    const family = (meta && meta.family) || (pdfData && pdfData.family);
+    const url = (meta && meta.url) || (pdfData && pdfData.url);
+
+    if (!parts || !family) {
+      toast('Please recalculate this result once, then try Review Paper again');
+      return;
+    }
+
+    try {
+      const reviewJson = RSMReviewBuilder.build(family, parts, url);
+      if (!reviewJson || !reviewJson.sections || !reviewJson.sections.length) {
+        toast('Could not build a review paper from this result');
+        return;
+      }
+      sessionStorage.setItem(REVIEW_HANDOFF_KEY, JSON.stringify(reviewJson));
+      window.location.href = 'review.html';
+    } catch (e) {
+      toast('Could not open Review Paper — try again');
+    }
+  }
+
   // ── Action buttons on the result card ──
   function attachResultActions(cardEl, ctx, meta) {
     if (!cardEl) return;
@@ -507,7 +549,7 @@ const RSMUI = (() => {
             }
             break;
           case 'review-paper':
-            toast('Review Paper — coming soon');
+            openReviewPaper(cardEl, meta);
             break;
           case 'attempt-mock':
             toast('Attempt as Mock — coming soon');
@@ -550,3 +592,4 @@ const RSMUI = (() => {
     isNativeApp
   };
 })();
+
