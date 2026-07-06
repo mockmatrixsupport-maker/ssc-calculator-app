@@ -1,6 +1,6 @@
 [
   { "family": "ssc", "examId": "ssc-gd", "label": "SSC GD  Constables — Answer Key Out", "badge": "New", "active": true },
-  { "family": "rrb", "examId": "rrb-ntpc-ug-cbt1", "label": "RRB 50 NTPCs (UG) — CBT I — Answer Key Out", "active": true },
+  { "family": "rrb", "examId": "rrb-ntpc-ug-cbt1", "label": "RRB  NTPCs (UG) — CBT I — Answer Key Out", "active": true },
   { "family": "ssc", "examId": "ssc-cgl-tier1", "label": "SSC CGL 2025 — Tier II — Answer Key Out", "active": true },
   { "family": "rrb", "examId": "rrb-groupd", "label": "RRB Group  2025 — Answer Key Out", "active": true }
 ]
