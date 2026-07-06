@@ -224,7 +224,7 @@ function renderCalculatorCards(families) {
 function loadCalculatorCards() {
   const stack = document.getElementById('calcStack');
   if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
-    RSMLoader.loadJSONLive('calculators.json', 'calculators', (data, fromCache) => {
+    RSMLoader.loadJSONLive('calculators.json', 'calculators', 'calculators.json', (data, fromCache) => {
       renderCalculatorCards(data || []);
     });
   } else {
@@ -243,7 +243,7 @@ let akExpanded = false;
 function loadLatestKeys() {
   const list = document.getElementById('akList');
   if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
-    RSMLoader.loadJSONLive('data/answerkeys-latest.json', 'answerkeys-latest', (data, fromCache) => {
+    RSMLoader.loadJSONLive('data/answerkeys-latest.json', 'answerkeys-latest', 'data/answerkeys-latest.json', (data, fromCache) => {
       latestKeys = data || [];
       renderAnswerKeys();
       // fromCache=true → this is the instant cached render, no wait.
@@ -295,7 +295,7 @@ document.getElementById('akViewMore').addEventListener('click', () => {
     btn.disabled = true;
     btn.textContent = 'Loading…';
     if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
-      RSMLoader.loadJSONLive('data/answerkeys-archive.json', 'answerkeys-archive', (data) => {
+      RSMLoader.loadJSONLive('data/answerkeys-archive.json', 'answerkeys-archive', 'data/answerkeys-archive.json', (data) => {
         archiveKeys = data || [];
         akExpanded = true;
         renderAnswerKeys();
