@@ -298,6 +298,35 @@ function loadJSON(path) {
   return fetch(path).then(r => r.json());
 }
 
+/**
+ * Wraps loadJSONLive into a Promise for use inside the async init()
+ * flow below — resolves on whichever comes first (cached data
+ * instantly, or the fresh fetch if nothing was cached yet), so page
+ * setup is never blocked waiting on a manifest round-trip. If a
+ * SECOND, later update arrives (the background fresh fetch completing
+ * after cache was already used to resolve), onLateUpdate fires so the
+ * exam dropdown can be silently repopulated in place — covering the
+ * "new exam added since your last visit" case without needing a
+ * second page load.
+ */
+function loadJSONLiveAwait(path, cacheKey, onLateUpdate) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    if (typeof RSMLoader !== 'undefined' && RSMLoader.loadJSONLive) {
+      RSMLoader.loadJSONLive(path, cacheKey, (data, fromCache) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(data || []);
+        } else if (onLateUpdate) {
+          onLateUpdate(data || []);
+        }
+      });
+    } else {
+      fetch(path).then(r => r.json()).then(data => resolve(data || [])).catch(() => resolve([]));
+    }
+  });
+}
+
 function fillSelect(selectEl, options, opts = {}) {
   selectEl.innerHTML = '';
   if (opts.placeholder !== false) {
@@ -328,10 +357,28 @@ function fillSelect(selectEl, options, opts = {}) {
 
   let FAMILY, EXAMS;
   try {
-    const families = await loadJSON('calculators.json');
+    const families = await loadJSONLiveAwait('calculators.json', 'calculators');
     FAMILY = families.find(f => f.id === familyId);
     if (!FAMILY) throw new Error('Unknown family: ' + familyId);
-    EXAMS = await loadJSON(FAMILY.examsFile);
+    EXAMS = await loadJSONLiveAwait(FAMILY.examsFile, 'exams-' + familyId, (freshExams) => {
+      // Background refresh arrived AFTER the page already rendered
+      // using cached data — silently repopulate the dropdown so a
+      // newly-added exam shows up without needing another page load.
+      EXAMS = freshExams;
+      const sel = document.getElementById('examSelect');
+      if (sel) {
+        const currentValue = sel.value;
+        // Keep the placeholder/first option, rebuild the rest.
+        while (sel.options.length > 1) sel.remove(1);
+        EXAMS.forEach(ex => {
+          const opt = document.createElement('option');
+          opt.value = ex.id;
+          opt.textContent = ex.title;
+          sel.appendChild(opt);
+        });
+        if (currentValue) sel.value = currentValue;
+      }
+    });
   } catch (e) {
     document.getElementById('calcLoading').classList.add('hidden');
     document.getElementById('calcLoadError').classList.remove('hidden');
@@ -594,5 +641,6 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
+
 
 
