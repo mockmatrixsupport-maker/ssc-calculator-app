@@ -43,11 +43,32 @@
    known SSC image host; RRB/TCS paths are resolved against
    the page's own origin). No re-upload / Cloudinary needed —
    the review page's <img> tags load them directly.
+
+   ── Math + line breaks (matches rrb.py / test.html exactly) ──
+   Formula images (WIRIS, <img data-mathml="...">) are never kept
+   as <img> — that data-mathml is an obfuscated MathML tree; the
+   img's own `src` is either a huge, useless base64 blob or an
+   unsupported "data:image/webcam" MIME the browser can't paint at
+   all (that's the "box"/broken-image bug). Instead we decode the
+   MathML and emit real inline LaTeX text — "\( ... \)" — the exact
+   same delimiters test.html's MathJax config expects, so equations
+   render inline as text, not as an image or a scrolling box.
+   Only genuine standalone diagram/photo images (real http(s)/relative
+   server URLs) are kept as <img> and left pointing at the original
+   digialm/SSC URL — no Cloudinary re-upload.
+   <br> tags are preserved (as literal "<br>") instead of being
+   collapsed to a space, so multi-line questions keep their line
+   breaks instead of running on as one sentence.
 ═══════════════════════════════════════════════════ */
 
 const RSMReviewBuilder = (() => {
 
   function esc(s) { return (s == null) ? '' : String(s); }
+
+  // Non-whitespace, never-occurs-in-real-text placeholder for <br> —
+  // survives the whitespace-collapsing step in decodeEntities() below
+  // and is turned back into a literal "<br>" right after.
+  const BR_TOKEN = '\u0001BR\u0001';
 
   function decodeEntities(s) {
     return (s || '')
@@ -62,7 +83,218 @@ const RSMReviewBuilder = (() => {
   }
 
   function stripTags(html) {
-    return decodeEntities((html || '').replace(/<[^>]+>/g, ' '));
+    // Keep <br> as an actual line break instead of collapsing it to a
+    // space — fixes multi-line questions (e.g. coded-relation puzzles)
+    // being flattened into a single run-on line.
+    let h = (html || '').replace(/<br\s*\/?>/gi, BR_TOKEN);
+    h = h.replace(/<[^>]+>/g, ' ');
+    h = decodeEntities(h);
+    h = h.split(BR_TOKEN).join('<br>');
+    return h;
+  }
+
+  // ═══════════════════════════════════════════════
+  // MathML (WIRIS-encoded) → LaTeX
+  // ═══════════════════════════════════════════════
+  // Mirrors mathml_to_latex() in rrb.py exactly: digialm/TCS-iON stores
+  // each formula as a WIRIS image whose data-mathml="..." attribute
+  // holds the real formula, obfuscated (« » stand in for < >, ¨ for ",
+  // § for &). We decode that back into real MathML, parse it, and walk
+  // the tree emitting \frac{}{}, ^{}, \sqrt{}, etc. — never the alt
+  // text (which is just a "spoken" approximation) and never the img's
+  // own src (a giant/unsupported-MIME base64 blob).
+
+  const MATHML_DEOBFUSCATE = { '\u00ab': '<', '\u00bb': '>', '\u00a8': '"', '\u00a7': '&' };
+
+  const MO_MAP = {
+    '-': '-', '+': '+', '=': '=',
+    '\u00d7': '\\times', '\u00f7': '\\div', '\u2212': '-',
+    '\u2264': '\\leq', '\u2265': '\\geq', '\u2260': '\\neq',
+    '\u00b1': '\\pm', '\u221a': '\\sqrt',
+    '(': '(', ')': ')', ',': ',', '%': '\\%',
+    '\u00a0': ' '
+  };
+
+  // Fallback "spoken alt text" -> symbol cleanup, only used if the
+  // MathML fails to decode/parse (mirrors ALT_MAP in rrb.py).
+  const ALT_MAP = {
+    ' space ': ' ', ' comma ': ', ', ' period ': '.', ' colon ': ': ',
+    ' semicolon ': '; ', ' left parenthesis ': '(', ' right parenthesis ': ')',
+    ' left bracket ': '[', ' right bracket ': ']',
+    ' left brace ': '{', ' right brace ': '}',
+    ' vertical line ': '||', ' plus ': '+', ' minus ': '-',
+    ' equals ': '=', ' not equals ': '\u2260',
+    ' less than ': '<', ' greater than ': '>',
+    ' multiplication sign ': '\u00d7', ' division sign ': '\u00f7',
+    ' degree ': '\u00b0', ' percent sign ': '%',
+    ' square root ': '\u221a', ' squared ': '\u00b2', ' cubed ': '\u00b3',
+    ' pi ': '\u03c0', ' alpha ': '\u03b1', ' beta ': '\u03b2', ' theta ': '\u03b8',
+    ' newline ': ' ', ' end root ': ''
+  };
+
+  function mathmlDeobfuscate(raw) {
+    let out = raw || '';
+    Object.keys(MATHML_DEOBFUSCATE).forEach(bad => {
+      out = out.split(bad).join(MATHML_DEOBFUSCATE[bad]);
+    });
+    return out;
+  }
+
+  function cleanAlt(alt) {
+    let t = alt || '';
+    Object.keys(ALT_MAP).forEach(k => { t = t.split(k).join(ALT_MAP[k]); });
+    return t.replace(/ {2,}/g, ' ').trim();
+  }
+
+  function mathmlLocalName(el) {
+    const n = el.nodeName || '';
+    const i = n.indexOf(':');
+    return i === -1 ? n : n.slice(i + 1);
+  }
+
+  function mathmlChildren(el) {
+    return Array.prototype.filter.call(el.childNodes, n => n.nodeType === 1);
+  }
+
+  function mathmlNode(el) {
+    const tag = mathmlLocalName(el);
+    const text = (el.textContent || '').trim();
+    const kids = mathmlChildren(el);
+    const childLatex = () => kids.map(mathmlNode).join('');
+
+    switch (tag) {
+      case 'math': return childLatex();
+      case 'mn': case 'mi': return text;
+      case 'mo': return MO_MAP.hasOwnProperty(text) ? MO_MAP[text] : text;
+      case 'mtext': return text;
+      case 'mrow': return childLatex();
+      case 'mfrac': {
+        const num = kids[0] ? mathmlNode(kids[0]) : '';
+        const den = kids[1] ? mathmlNode(kids[1]) : '';
+        return `\\frac{${num}}{${den}}`;
+      }
+      case 'msup': {
+        let base = kids[0] ? mathmlNode(kids[0]) : '';
+        const exp = kids[1] ? mathmlNode(kids[1]) : '';
+        if (base.length > 1 && !(base.startsWith('(') && base.endsWith(')'))) base = `{${base}}`;
+        return `${base}^{${exp}}`;
+      }
+      case 'msub': {
+        const base = kids[0] ? mathmlNode(kids[0]) : '';
+        const sub = kids[1] ? mathmlNode(kids[1]) : '';
+        return `${base}_{${sub}}`;
+      }
+      case 'msubsup': {
+        const base = kids[0] ? mathmlNode(kids[0]) : '';
+        const sub = kids[1] ? mathmlNode(kids[1]) : '';
+        const sup = kids[2] ? mathmlNode(kids[2]) : '';
+        return `${base}_{${sub}}^{${sup}}`;
+      }
+      case 'msqrt': return `\\sqrt{${childLatex()}}`;
+      case 'mroot': {
+        const base = kids[0] ? mathmlNode(kids[0]) : '';
+        const idx = kids[1] ? mathmlNode(kids[1]) : '';
+        return `\\sqrt[${idx}]{${base}}`;
+      }
+      case 'mover': {
+        const base = kids[0] ? mathmlNode(kids[0]) : '';
+        const over = kids[1] ? mathmlNode(kids[1]) : '';
+        if (over === '\u00af' || over === '-') return `\\overline{${base}}`;
+        return `\\overset{${over}}{${base}}`;
+      }
+      case 'munder': {
+        const base = kids[0] ? mathmlNode(kids[0]) : '';
+        const under = kids[1] ? mathmlNode(kids[1]) : '';
+        return `\\underset{${under}}{${base}}`;
+      }
+      case 'mfenced': {
+        const opening = el.getAttribute('open') || '(';
+        const closing = el.getAttribute('close') || ')';
+        const inner = kids.map(mathmlNode).join(',');
+        return `${opening}${inner}${closing}`;
+      }
+      case 'mtable': {
+        const rows = kids.map(row => mathmlChildren(row).map(mathmlNode).join(' & '));
+        return '\\begin{matrix}' + rows.join(' \\\\ ') + '\\end{matrix}';
+      }
+      case 'mtr': case 'mtd': case 'mstyle': return childLatex();
+      case 'mspace': return ' ';
+      default: return childLatex();
+    }
+  }
+
+  function xmlParseOk(doc) {
+    return !!doc && !doc.querySelector('parsererror');
+  }
+
+  function mathmlToLatex(rawDataMathml) {
+    const decoded = mathmlDeobfuscate(rawDataMathml);
+    const parser = new DOMParser();
+    let doc = parser.parseFromString(decoded, 'application/xml');
+    if (!xmlParseOk(doc)) {
+      // Same fallback as rrb.py: escape any stray & that isn't already
+      // a valid entity/numeric reference, then retry once.
+      const fixed = decoded.replace(/&(?!#?\w+;)/g, '&amp;');
+      doc = parser.parseFromString(fixed, 'application/xml');
+    }
+    if (!xmlParseOk(doc) || !doc.documentElement) return '';
+    let latex = mathmlNode(doc.documentElement);
+    latex = latex.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    return latex;
+  }
+
+  // Converts one <img ...> tag (attrs string, no surrounding < >) into
+  // the inline text that should replace it:
+  //  - data-mathml present  -> "\( latex \)" (falls back to cleaned alt
+  //    text only if the MathML itself fails to decode/parse)
+  //  - otherwise a real diagram/photo image -> handled by the caller
+  //    (kept as an actual <img>, see resolveInlineContent below)
+  function mathImgLatex(attrs) {
+    const mathmlM = attrs.match(/data-mathml=["']([^"']*)["']/i);
+    if (!mathmlM) return null;
+    try {
+      const latex = mathmlToLatex(mathmlM[1]);
+      if (latex) return ` \\(${latex}\\) `;
+    } catch (e) { /* fall through to alt-text fallback */ }
+    const altM = attrs.match(/alt=["']([^"']*)["']/i);
+    const alt = altM ? decodeEntities(altM[1]) : '';
+    const cleaned = cleanAlt(alt);
+    return cleaned ? ` ${cleaned} ` : ' ';
+  }
+
+  // Shared image/math-aware inline-content resolver used by BOTH the
+  // SSC and RRB extractors. Walks every <img> in reading order:
+  //   • WIRIS formula (data-mathml) -> inline LaTeX text (no <img>,
+  //     no Cloudinary — the formula becomes real text for MathJax)
+  //   • real http(s)/relative server image -> kept as a genuine image,
+  //     resolved to its original absolute URL and returned via the
+  //     `images` array + a {{img:N}} placeholder (same mechanism
+  //     review.js already renders)
+  //   • unusable inline data: URI with no formula behind it (e.g. a
+  //     decorative icon) -> dropped, never queued as a broken <img>
+  // <br> tags are preserved as literal "<br>" line breaks throughout.
+  function resolveInlineContent(html, baseUrl, resolveFn) {
+    const images = [];
+    let out = (html || '').replace(/<br\s*\/?>/gi, BR_TOKEN);
+
+    out = out.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+      const mathLatex = mathImgLatex(attrs);
+      if (mathLatex !== null) return mathLatex;
+
+      const srcM = attrs.match(/src=["']([^"']*)["']/i);
+      const src = srcM ? srcM[1] : '';
+      if (!src || /^data:/i.test(src)) return ''; // no usable real image
+
+      const resolved = resolveFn(src, baseUrl);
+      if (!resolved) return '';
+      images.push(resolved);
+      return ` {{img:${images.length - 1}}} `;
+    });
+
+    out = out.replace(/<[^>]+>/g, ' ');
+    out = decodeEntities(out);
+    out = out.split(BR_TOKEN).join('<br>');
+    return { text: out, images };
   }
 
   // ═══════════════════════════════════════════════
@@ -75,16 +307,6 @@ const RSMReviewBuilder = (() => {
     if (/^https?:\/\//i.test(src)) return src;
     if (src.startsWith('/')) return SSC_IMG_BASE.replace(/\/$/, '') + src;
     return SSC_IMG_BASE + src.replace(/^\.?\//, '');
-  }
-
-  function sscExtractImages(block) {
-    const imgs = [];
-    const re = /<img[^>]*src=['"]([^'"]+)['"][^>]*>/gi;
-    let m;
-    while ((m = re.exec(block)) !== null) {
-      imgs.push(sscResolveImg(m[1]));
-    }
-    return imgs;
   }
 
   function sscCandidateInfo(html) {
@@ -120,10 +342,11 @@ const RSMReviewBuilder = (() => {
       const tdRe = /<td[^>]*width=['"]49%['"][^>]*>([\s\S]*?)<\/td>/i;
       const tdM = block.match(tdRe);
       const contentHtml = tdM ? tdM[1] : block;
+      const { text, images } = resolveInlineContent(contentHtml, null, sscResolveImg);
       options.push({
         label: String.fromCharCode(64 + num), // 1->A, 2->B...
-        text: stripTags(contentHtml),
-        images: sscExtractImages(contentHtml),
+        text,
+        images,
         color
       });
     }
@@ -200,7 +423,7 @@ const RSMReviewBuilder = (() => {
         qno: qInfo.qno,
         qId: null,
         status,
-        question: { text: stripTags(qContent), images: sscExtractImages(qContent) },
+        question: resolveInlineContent(qContent, null, sscResolveImg),
         options: finalOptions
       });
     });
@@ -295,29 +518,15 @@ const RSMReviewBuilder = (() => {
     return blocks;
   }
 
-  // Converts a WIRIS/MathJax-style <img data-mathml="..."> formula image
-  // into a lightweight inline marker the review page can render via
-  // MathJax, falling back to the img itself if data-mathml is absent.
-  // We keep this intentionally simple (no MathML->LaTeX parsing here —
-  // that already exists in the standalone python script for JSON export;
-  // for in-browser review we just render the formula IMAGE directly,
-  // which is simplest and always visually correct).
+  // WIRIS/MathJax formula images (<img data-mathml="...">) are decoded to
+  // real inline LaTeX text via mathmlToLatex()/resolveInlineContent()
+  // above — never rendered as an <img> (their own src is either a huge
+  // base64 blob or an unsupported "data:image/webcam" MIME the browser
+  // can't paint, which is what produced the broken/boxed formulas).
+  // Genuine standalone diagram/photo images are kept as real <img> tags
+  // pointing at their original digialm URL. <br> line breaks are kept.
   function rrbCellContent(tdHtml, baseUrl) {
-    // Collect standalone (non-formula) images separately from inline
-    // formula images so the caller can decide layout, but for the
-    // review page we render everything inline in reading order —
-    // so here we just clean text and collect ALL <img> src's in order,
-    // replacing each <img> with a placeholder token so text ordering
-    // around images is preserved when rendered.
-    const images = [];
-    let html = tdHtml;
-    html = html.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (full, src) => {
-      const resolved = rrbResolveImg(src, baseUrl);
-      images.push(resolved);
-      return ` {{img:${images.length - 1}}} `;
-    });
-    const text = stripTags(html);
-    return { text, images };
+    return resolveInlineContent(tdHtml, baseUrl, rrbResolveImg);
   }
 
   function rrbExtractAnswerRows(block) {
@@ -434,3 +643,4 @@ const RSMReviewBuilder = (() => {
 
   return { build };
 })();
+
