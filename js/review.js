@@ -81,22 +81,38 @@
   // urls back in at their {{img:N}} placeholder positions (RRB path) or
   // just appending them after the text (SSC path, which is pure images
   // with no interleaved placeholder text).
+  //
+  // Math formulas are NOT part of `images` — review-json-builder.js
+  // already decoded them into literal inline LaTeX ("\( ... \)") text,
+  // so they pass straight through esc() untouched (no HTML-special
+  // chars in LaTeX delimiters) and get typeset by the MathJax call in
+  // renderBody(), the exact same way test.html renders its questions.
+  //
+  // `<br>` line breaks are also preserved as real text (not stripped
+  // by the builder), so esc() below turns them into "&lt;br&gt;" —
+  // convert that back into an actual <br> right after, same fix
+  // test.html's own getLangText() applies.
   function renderContent(content) {
     if (!content) return '';
-    const text = esc(content.text || '');
+    let text = esc(content.text || '');
+    text = text.replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+               // drop any leading/trailing line breaks left over from
+               // the source markup so cards don't start/end with a gap
+               .replace(/^(\s*<br\s*\/?>\s*)+/i, '')
+               .replace(/(\s*<br\s*\/?>\s*)+$/i, '');
     const images = content.images || [];
     if (!images.length) return text;
 
+    const imgTag = (url) => url
+      ? `<img class="rq-img-inline" src="${esc(url)}" loading="lazy" alt="" onerror="this.style.display='none'">`
+      : '';
+
     if (/\{\{img:\d+\}\}/.test(text)) {
-      return text.replace(/\{\{img:(\d+)\}\}/g, (full, idx) => {
-        const url = images[parseInt(idx, 10)];
-        return url ? `<img class="rq-img-inline" src="${esc(url)}" loading="lazy" alt="">` : '';
-      });
+      return text.replace(/\{\{img:(\d+)\}\}/g, (full, idx) => imgTag(images[parseInt(idx, 10)]));
     }
     // SSC-style: no placeholders, images ARE the content (often bilingual
     // EN/HI stacked) — render text (if any) then every image in order.
-    const imgTags = images.map(u => `<img class="rq-img-inline" src="${esc(u)}" loading="lazy" alt="">`).join('');
-    return text + imgTags;
+    return text + images.map(imgTag).join('');
   }
 
   const STATUS_LABEL = { correct: 'Correct', wrong: 'Wrong', skipped: 'Skipped', bonus: 'Bonus' };
@@ -149,10 +165,9 @@
     </div>`;
   }
 
-  function buildCard(q, direction) {
-    const animClass = direction === 'next' ? ' slide-next' : direction === 'prev' ? ' slide-prev' : '';
+  function buildCard(q) {
     return `
-      <div class="review-card${animClass}" id="rq-card-${esc(q.qno)}" data-status="${esc(q.status)}" data-qno="${esc(q.qno)}">
+      <div class="review-card" id="rq-card-${esc(q.qno)}" data-status="${esc(q.status)}" data-qno="${esc(q.qno)}">
         <div class="review-card__head">
           <span class="review-card__qno">Q${esc(q.qno)}</span>
           <span class="review-status-badge ${esc(q.status)}">${STATUS_LABEL[q.status] || q.status}</span>
@@ -200,10 +215,17 @@
     closePalette();
     const list = currentList();
     const idx = list.findIndex(q => String(q.qno) === String(qno));
-    if (idx === -1) return;
-    currentIndex = idx;
-    renderBody();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (idx !== -1) {
+      currentIndex = idx;
+      updateBottomNav();
+    }
+    const target = document.getElementById('rq-card-' + qno);
+    if (!target) return;
+    setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.classList.add('active-jump');
+      setTimeout(() => target.classList.remove('active-jump'), 1400);
+    }, 220); // let the panel's own slide-out transition finish first
   }
 
   function openPalette() {
@@ -237,11 +259,10 @@
     els.filterbar.querySelectorAll('.review-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         currentFilter = btn.getAttribute('data-filter');
-        currentIndex = 0; // switching filter starts back at its first question
         renderFilterbar();
         renderBody();
         renderPalette(); // keep the side palette in sync with whichever filter is active
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: els.filterbar.offsetTop - 1, behavior: 'smooth' });
       });
     });
   }
@@ -252,31 +273,33 @@
       : FLAT_QUESTIONS.filter(q => q.status === currentFilter);
   }
 
-  // Renders exactly ONE question — the one at currentIndex in the active
-  // filter's list — replacing whatever was shown before. Paged, app-like
-  // single-question view (like a real test screen): Next/Previous swap
-  // the content instead of scrolling to a different card further down.
-  function renderBody(direction) {
+  function renderBody() {
     const list = currentList();
+    currentIndex = 0; // filter just changed (or first render) — reset to the first question in it
+    updateBottomNav();
 
     if (!list.length) {
-      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div>`;
-      updateBottomNav();
+      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div><div class="review-scroll-spacer"></div>`;
       return;
     }
 
-    if (currentIndex < 0) currentIndex = 0;
-    if (currentIndex > list.length - 1) currentIndex = list.length - 1;
+    // Group by section for readability, preserving original section order.
+    const bySection = [];
+    const seen = new Map();
+    list.forEach(q => {
+      if (!seen.has(q.sectionName)) {
+        seen.set(q.sectionName, { name: q.sectionName, items: [] });
+        bySection.push(seen.get(q.sectionName));
+      }
+      seen.get(q.sectionName).items.push(q);
+    });
 
-    const q = list[currentIndex];
-    els.body.innerHTML = `
-      <div class="review-section-heading">${esc(q.sectionName)}</div>
-      ${buildCard(q, direction)}
-    `;
+    els.body.innerHTML = bySection.map(sec => `
+      <div class="review-section-heading">${esc(sec.name)}</div>
+      ${sec.items.map(buildCard).join('')}
+    `).join('') + '<div class="review-scroll-spacer"></div>';
 
-    updateBottomNav();
-
-    // Re-typeset any math on the freshly-injected question.
+    // Re-typeset any math on the freshly-injected cards.
     if (window.MathJax && window.MathJax.typesetPromise) {
       window.MathJax.typesetPromise([els.body]).catch(() => {});
     }
@@ -294,16 +317,29 @@
     els.nextBtn.disabled = total === 0 || currentIndex >= total - 1;
   }
 
+  function scrollToIndex(idx) {
+    const list = currentList();
+    const q = list[idx];
+    if (!q) return;
+    const target = document.getElementById('rq-card-' + q.qno);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.add('active-jump');
+    setTimeout(() => target.classList.remove('active-jump'), 1400);
+  }
+
   els.prevBtn.addEventListener('click', () => {
     if (currentIndex <= 0) return;
     currentIndex -= 1;
-    renderBody('prev');
+    updateBottomNav();
+    scrollToIndex(currentIndex);
   });
   els.nextBtn.addEventListener('click', () => {
     const total = currentList().length;
     if (currentIndex >= total - 1) return;
     currentIndex += 1;
-    renderBody('next');
+    updateBottomNav();
+    scrollToIndex(currentIndex);
   });
 
   function flatten(data) {
