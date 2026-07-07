@@ -70,16 +70,35 @@ const RSMReviewBuilder = (() => {
   // and is turned back into a literal "<br>" right after.
   const BR_TOKEN = '\u0001BR\u0001';
 
+  // Decode ALL HTML entities (not just a hand-picked few) — same fix
+  // already used in test.html's getLangText()/decodeHTML() helper and
+  // mirrored server-side by rrb.py's html.unescape(). The old version
+  // here only handled &nbsp;/&amp;/&lt;/&gt;/&quot;/&#39;, so anything
+  // else the source HTML encoded — &lsquo;/&rsquo; (curly quotes),
+  // &zwj; (zero-width joiner, common in Hindi conjuncts), &ndash;,
+  // &pi;, &theta;, etc. — was left as literal, unreadable entity text
+  // in rendered questions ("&lsquo;salt elbow care&rsquo;", "विस्&zwj;तृत").
+  // A <textarea>'s innerHTML→value round-trip decodes via the browser's
+  // own full HTML entity table, so every named/numeric entity resolves
+  // correctly with no maintenance-prone whitelist to keep extending.
+  const _decodeEl = (typeof document !== 'undefined') ? document.createElement('textarea') : null;
   function decodeEntities(s) {
-    return (s || '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ')
-      .trim();
+    if (!s) return '';
+    let out = s;
+    if (_decodeEl) {
+      _decodeEl.innerHTML = s;
+      out = _decodeEl.value;
+    } else {
+      // Non-DOM fallback (shouldn't normally be hit in this app).
+      out = out
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    }
+    return out.replace(/\s+/g, ' ').trim();
   }
 
   function stripTags(html) {
@@ -643,4 +662,5 @@ const RSMReviewBuilder = (() => {
 
   return { build };
 })();
+
 
