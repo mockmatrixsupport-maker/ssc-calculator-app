@@ -149,9 +149,10 @@
     </div>`;
   }
 
-  function buildCard(q) {
+  function buildCard(q, direction) {
+    const animClass = direction === 'next' ? ' slide-next' : direction === 'prev' ? ' slide-prev' : '';
     return `
-      <div class="review-card" id="rq-card-${esc(q.qno)}" data-status="${esc(q.status)}" data-qno="${esc(q.qno)}">
+      <div class="review-card${animClass}" id="rq-card-${esc(q.qno)}" data-status="${esc(q.status)}" data-qno="${esc(q.qno)}">
         <div class="review-card__head">
           <span class="review-card__qno">Q${esc(q.qno)}</span>
           <span class="review-status-badge ${esc(q.status)}">${STATUS_LABEL[q.status] || q.status}</span>
@@ -199,17 +200,10 @@
     closePalette();
     const list = currentList();
     const idx = list.findIndex(q => String(q.qno) === String(qno));
-    if (idx !== -1) {
-      currentIndex = idx;
-      updateBottomNav();
-    }
-    const target = document.getElementById('rq-card-' + qno);
-    if (!target) return;
-    setTimeout(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      target.classList.add('active-jump');
-      setTimeout(() => target.classList.remove('active-jump'), 1400);
-    }, 220); // let the panel's own slide-out transition finish first
+    if (idx === -1) return;
+    currentIndex = idx;
+    renderBody();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function openPalette() {
@@ -243,10 +237,11 @@
     els.filterbar.querySelectorAll('.review-chip').forEach(btn => {
       btn.addEventListener('click', () => {
         currentFilter = btn.getAttribute('data-filter');
+        currentIndex = 0; // switching filter starts back at its first question
         renderFilterbar();
         renderBody();
         renderPalette(); // keep the side palette in sync with whichever filter is active
-        window.scrollTo({ top: els.filterbar.offsetTop - 1, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
   }
@@ -257,33 +252,31 @@
       : FLAT_QUESTIONS.filter(q => q.status === currentFilter);
   }
 
-  function renderBody() {
+  // Renders exactly ONE question — the one at currentIndex in the active
+  // filter's list — replacing whatever was shown before. Paged, app-like
+  // single-question view (like a real test screen): Next/Previous swap
+  // the content instead of scrolling to a different card further down.
+  function renderBody(direction) {
     const list = currentList();
-    currentIndex = 0; // filter just changed (or first render) — reset to the first question in it
-    updateBottomNav();
 
     if (!list.length) {
-      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div><div class="review-scroll-spacer"></div>`;
+      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div>`;
+      updateBottomNav();
       return;
     }
 
-    // Group by section for readability, preserving original section order.
-    const bySection = [];
-    const seen = new Map();
-    list.forEach(q => {
-      if (!seen.has(q.sectionName)) {
-        seen.set(q.sectionName, { name: q.sectionName, items: [] });
-        bySection.push(seen.get(q.sectionName));
-      }
-      seen.get(q.sectionName).items.push(q);
-    });
+    if (currentIndex < 0) currentIndex = 0;
+    if (currentIndex > list.length - 1) currentIndex = list.length - 1;
 
-    els.body.innerHTML = bySection.map(sec => `
-      <div class="review-section-heading">${esc(sec.name)}</div>
-      ${sec.items.map(buildCard).join('')}
-    `).join('') + '<div class="review-scroll-spacer"></div>';
+    const q = list[currentIndex];
+    els.body.innerHTML = `
+      <div class="review-section-heading">${esc(q.sectionName)}</div>
+      ${buildCard(q, direction)}
+    `;
 
-    // Re-typeset any math on the freshly-injected cards.
+    updateBottomNav();
+
+    // Re-typeset any math on the freshly-injected question.
     if (window.MathJax && window.MathJax.typesetPromise) {
       window.MathJax.typesetPromise([els.body]).catch(() => {});
     }
@@ -301,29 +294,16 @@
     els.nextBtn.disabled = total === 0 || currentIndex >= total - 1;
   }
 
-  function scrollToIndex(idx) {
-    const list = currentList();
-    const q = list[idx];
-    if (!q) return;
-    const target = document.getElementById('rq-card-' + q.qno);
-    if (!target) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    target.classList.add('active-jump');
-    setTimeout(() => target.classList.remove('active-jump'), 1400);
-  }
-
   els.prevBtn.addEventListener('click', () => {
     if (currentIndex <= 0) return;
     currentIndex -= 1;
-    updateBottomNav();
-    scrollToIndex(currentIndex);
+    renderBody('prev');
   });
   els.nextBtn.addEventListener('click', () => {
     const total = currentList().length;
     if (currentIndex >= total - 1) return;
     currentIndex += 1;
-    updateBottomNav();
-    scrollToIndex(currentIndex);
+    renderBody('next');
   });
 
   function flatten(data) {
@@ -395,3 +375,4 @@
   }
 })();
    
+
