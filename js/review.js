@@ -375,6 +375,23 @@
     else window.location.href = 'calculator.html' + window.location.search;
   });
 
-  document.addEventListener('DOMContentLoaded', init);
+  // review.js is now loaded through RSMLoader.loadScripts (async, so it can
+  // check/refresh a cached copy before running) instead of a plain
+  // <script src> tag. That means real, non-trivial time passes — network/
+  // disk read + parse — between the HTML document finishing parsing and
+  // this line actually executing. DOMContentLoaded fires the MOMENT the
+  // document is parsed, which happens long before an async script load
+  // resolves — so by the time we get here, that event has almost always
+  // already fired and is gone for good. Blindly attaching a listener for
+  // it then means init() never runs and the page is stuck on its initial
+  // spinner forever (confirmed: this was the actual cause of the infinite
+  // "Preparing your review paper…" spinner). Guard against both cases:
+  // if the DOM is already past loading, run init() immediately; otherwise
+  // it's genuinely still safe to wait for the event.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
-
+   
