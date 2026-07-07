@@ -618,8 +618,23 @@ function fillSelect(selectEl, options, opts = {}) {
           parts: fetchResult.parts // present when the cache entry kept the raw HTML too — needed by the PDF button
         });
       } else {
-        const correctMark = parseFloat(markingCorrect.value) || 0;
-        const wrongMark = parseFloat(markingWrong.value) || 0;
+        // Resolve the marking scheme directly from EXAMS by the
+        // dropdown's current examId — never trust the hidden
+        // markingCorrect/markingWrong inputs as the source of truth.
+        // Those are only ever populated by selectExam() firing on a
+        // 'change' event, which mobile WebViews can skip after the
+        // app is backgrounded/restored (the <select> visually keeps
+        // its value, but our JS handler never re-runs) — silently
+        // leaving them blank and producing 0.00 marks everywhere
+        // while Right/Wrong still parse fine. Re-deriving fresh here
+        // makes that whole class of bug impossible.
+        const examObj = EXAMS.find(e => e.id === examSelect.value);
+        if (!examObj) {
+          setBtnState('idle');
+          return showError('Exam scheme could not be resolved — please reselect the exam and try again.');
+        }
+        const correctMark = examObj.correct;
+        const wrongMark = examObj.wrong;
         RSMScoreEngine.run(fetchResult.family, fetchResult.parts, correctMark, wrongMark, resultsSection, url, RSM_CTX);
       }
 
@@ -642,6 +657,7 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
+
 
 
 
