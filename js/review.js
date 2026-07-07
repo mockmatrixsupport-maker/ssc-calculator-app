@@ -37,12 +37,17 @@
     paletteBackdrop: document.getElementById('reviewPaletteBackdrop'),
     paletteClose: document.getElementById('reviewPaletteClose'),
     paletteGrid: document.getElementById('reviewPaletteGrid'),
-    paletteFilterLabel: document.getElementById('reviewPaletteFilterLabel')
+    paletteFilterLabel: document.getElementById('reviewPaletteFilterLabel'),
+    bottomnav: document.getElementById('reviewBottomnav'),
+    prevBtn: document.getElementById('reviewPrevBtn'),
+    nextBtn: document.getElementById('reviewNextBtn'),
+    navPosition: document.getElementById('reviewNavPosition')
   };
 
   let DATA = null;          // the unified review JSON
   let FLAT_QUESTIONS = [];  // [{ ...question, sectionName }]
   let currentFilter = 'wrong'; // default per spec: opens on Wrong filter
+  let currentIndex = 0;        // position within the current filter's list, drives Prev/Next
 
   // ── One-time consume of the handoff payload — never re-read, never
   // written back, so a refresh of this page (no payload left) correctly
@@ -192,6 +197,12 @@
 
   function jumpToQuestion(qno) {
     closePalette();
+    const list = currentList();
+    const idx = list.findIndex(q => String(q.qno) === String(qno));
+    if (idx !== -1) {
+      currentIndex = idx;
+      updateBottomNav();
+    }
     const target = document.getElementById('rq-card-' + qno);
     if (!target) return;
     setTimeout(() => {
@@ -240,10 +251,16 @@
     });
   }
 
-  function renderBody() {
-    const list = currentFilter === 'all'
+  function currentList() {
+    return currentFilter === 'all'
       ? FLAT_QUESTIONS
       : FLAT_QUESTIONS.filter(q => q.status === currentFilter);
+  }
+
+  function renderBody() {
+    const list = currentList();
+    currentIndex = 0; // filter just changed (or first render) — reset to the first question in it
+    updateBottomNav();
 
     if (!list.length) {
       els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div><div class="review-scroll-spacer"></div>`;
@@ -271,6 +288,43 @@
       window.MathJax.typesetPromise([els.body]).catch(() => {});
     }
   }
+
+  // ── Fixed bottom Previous/Next nav ──
+  // Moves through whichever list the active filter chip currently shows,
+  // same list order the cards are rendered in (grouped by section, but
+  // flattened here since only linear position matters for Prev/Next).
+  function updateBottomNav() {
+    const list = currentList();
+    const total = list.length;
+    els.navPosition.textContent = total ? `${currentIndex + 1} / ${total}` : '0 / 0';
+    els.prevBtn.disabled = total === 0 || currentIndex <= 0;
+    els.nextBtn.disabled = total === 0 || currentIndex >= total - 1;
+  }
+
+  function scrollToIndex(idx) {
+    const list = currentList();
+    const q = list[idx];
+    if (!q) return;
+    const target = document.getElementById('rq-card-' + q.qno);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.add('active-jump');
+    setTimeout(() => target.classList.remove('active-jump'), 1400);
+  }
+
+  els.prevBtn.addEventListener('click', () => {
+    if (currentIndex <= 0) return;
+    currentIndex -= 1;
+    updateBottomNav();
+    scrollToIndex(currentIndex);
+  });
+  els.nextBtn.addEventListener('click', () => {
+    const total = currentList().length;
+    if (currentIndex >= total - 1) return;
+    currentIndex += 1;
+    updateBottomNav();
+    scrollToIndex(currentIndex);
+  });
 
   function flatten(data) {
     const out = [];
@@ -323,3 +377,4 @@
 
   document.addEventListener('DOMContentLoaded', init);
 })();
+
