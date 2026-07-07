@@ -174,7 +174,22 @@ button { font-family: inherit; }
   max-width: 720px;
   margin: 0 auto;
   padding: var(--sp-4) var(--sp-4) calc(76px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
 }
+
+/* Paged single-question view: each Next/Previous swap slides the new
+   question in horizontally (like a real test screen moving to the next
+   question), instead of the page scrolling through a vertical list. */
+@keyframes rq-slide-in-right {
+  from { transform: translateX(28px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes rq-slide-in-left {
+  from { transform: translateX(-28px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+.review-card.slide-next { animation: rq-slide-in-right 0.22s ease; }
+.review-card.slide-prev { animation: rq-slide-in-left 0.22s ease; }
 
 .review-section-heading {
   font-size: 0.72rem; font-weight: 700;
@@ -326,7 +341,6 @@ button { font-family: inherit; }
 @keyframes rq-spin { to { transform: rotate(360deg); } }
 
 /* ── Bottom safe padding so last card isn't glued to edge ── */
-.review-scroll-spacer { height: var(--sp-8); }
 
 /* ── Side question palette (slide-in panel) ── */
 /* ── Floating question-palette toggle (bottom-right) ── */
@@ -473,4 +487,5 @@ button { font-family: inherit; }
 .review-palette__btn.skipped { background: var(--skip-bg); border-color: var(--border-strong); color: var(--text-muted); }
 .review-palette__btn.bonus   { background: var(--bonus-bg); border-color: var(--bonus); color: var(--bonus); }
 .review-palette__btn.active-jump { outline: 2px solid var(--ink); outline-offset: 1px; }
+
 
