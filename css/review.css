@@ -174,22 +174,7 @@ button { font-family: inherit; }
   max-width: 720px;
   margin: 0 auto;
   padding: var(--sp-4) var(--sp-4) calc(76px + env(safe-area-inset-bottom));
-  overflow-x: hidden;
 }
-
-/* Paged single-question view: each Next/Previous swap slides the new
-   question in horizontally (like a real test screen moving to the next
-   question), instead of the page scrolling through a vertical list. */
-@keyframes rq-slide-in-right {
-  from { transform: translateX(28px); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
-}
-@keyframes rq-slide-in-left {
-  from { transform: translateX(-28px); opacity: 0; }
-  to   { transform: translateX(0);     opacity: 1; }
-}
-.review-card.slide-next { animation: rq-slide-in-right 0.22s ease; }
-.review-card.slide-prev { animation: rq-slide-in-left 0.22s ease; }
 
 .review-section-heading {
   font-size: 0.72rem; font-weight: 700;
@@ -237,9 +222,26 @@ button { font-family: inherit; }
   font-size: 0.92rem; line-height: 1.55;
   color: var(--text-primary);
   margin-bottom: var(--sp-4);
-  word-wrap: break-word;
-  overflow-x: auto;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
 }
+
+/* ── MathJax — same fix as test.html so equations render inline as
+   wrapped text instead of a scrolling box or a broken image ── */
+mjx-container {
+  max-width: 100% !important;
+  overflow: visible !important;
+}
+mjx-container, mjx-math, mjx-mtext {
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+mjx-container[display="true"] {
+  display: block !important;
+  max-width: 100% !important;
+}
+mjx-math { white-space: normal !important; }
+mjx-mtext { white-space: nowrap !important; }
 .review-card__question img,
 .review-option img {
   max-width: 100%;
@@ -273,7 +275,7 @@ button { font-family: inherit; }
   border: 1.5px solid var(--border-strong);
   color: var(--text-secondary);
 }
-.review-option__text { flex: 1; min-width: 0; word-wrap: break-word; overflow-x: auto; }
+.review-option__text { flex: 1; min-width: 0; overflow-wrap: break-word !important; word-break: normal !important; }
 
 .review-option__tag {
   flex-shrink: 0;
@@ -341,6 +343,7 @@ button { font-family: inherit; }
 @keyframes rq-spin { to { transform: rotate(360deg); } }
 
 /* ── Bottom safe padding so last card isn't glued to edge ── */
+.review-scroll-spacer { height: var(--sp-8); }
 
 /* ── Side question palette (slide-in panel) ── */
 /* ── Floating question-palette toggle (bottom-right) ── */
