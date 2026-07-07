@@ -30,7 +30,7 @@ const RSMRank = (() => {
   // Set once your GET /rank endpoint exists (Lambda + API Gateway route).
   // Leave empty to make this module a silent no-op — shows "N/A" on
   // every card without ever attempting a network call.
-  const RANK_API_URL = ''; // e.g. 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'
+  const RANK_API_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'; // e.g. 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'
 
   const FETCH_TIMEOUT_MS = 6000;
 
