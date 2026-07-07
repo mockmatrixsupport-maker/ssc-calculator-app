@@ -41,9 +41,6 @@ window.MathJax = {
   <button type="button" class="review-back-btn" id="reviewBackBtn" aria-label="Back">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
-  <button type="button" class="review-back-btn" id="reviewPaletteBtn" aria-label="Question palette">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-  </button>
   <div class="review-topbar__title">
     <h1 id="reviewTitle">Review Paper</h1>
     <span id="reviewSubtitle"></span>
@@ -75,6 +72,20 @@ window.MathJax = {
      currently active (Wrong/Correct/Skipped/Bonus/All), colored by
      status, using the SAME qno the source HTML carries. Tapping a
      number scrolls straight to that question's card. -->
+<!-- Floating question-palette toggle — bottom-right, fixed, green,
+     each of the three lines prefixed with a small dot (like a bullet
+     list icon rather than a plain hamburger). -->
+<button type="button" class="review-fab" id="reviewPaletteBtn" aria-label="Question palette">
+  <svg viewBox="0 0 24 24" fill="none">
+    <circle cx="4" cy="6" r="1.6" fill="currentColor"/>
+    <line x1="8" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+    <circle cx="4" cy="12" r="1.6" fill="currentColor"/>
+    <line x1="8" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+    <circle cx="4" cy="18" r="1.6" fill="currentColor"/>
+    <line x1="8" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+  </svg>
+</button>
+
 <div class="review-palette-backdrop" id="reviewPaletteBackdrop"></div>
 <div class="review-palette" id="reviewPalette">
   <div class="review-palette__head">
@@ -92,8 +103,18 @@ window.MathJax = {
   <div class="review-palette__grid" id="reviewPaletteGrid"></div>
 </div>
 
-<script src="js/review-json-builder.js?v=1"></script>
-<script src="js/review.js?v=1"></script>
+<script src="js/remote-loader.js?v=1"></script>
+<script>
+  // Same as calculator.html: every app script goes through RSMLoader,
+  // not a plain <script src> tag — otherwise this page would never
+  // pick up a pushed update to review.js / review-json-builder.js,
+  // only whatever was bundled at install time. Loaded in order so
+  // review.js can rely on RSMReviewBuilder already being defined.
+  RSMLoader.loadScripts([
+    { path: 'js/review-json-builder.js', local: 'js/review-json-builder.js?v=1' },
+    { path: 'js/review.js',              local: 'js/review.js?v=1' }
+  ]);
+</script>
 <script>
 // Match whichever theme the person had active on the calculator page —
 // read the same localStorage key ui-common.js's theme toggle uses, so
@@ -107,3 +128,4 @@ window.MathJax = {
 </script>
 </body>
 </html>
+
