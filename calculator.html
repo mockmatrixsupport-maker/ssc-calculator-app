@@ -607,25 +607,48 @@ function fillSelect(selectEl, options, opts = {}) {
     resultsSection.classList.add('hidden');
     setBtnState('fetching');
 
-    // ── Tiered progress engagement + hard timeout ──
-    // Keeps the button text informative instead of sitting frozen on
-    // "Fetching answer key..." indefinitely on a slow connection, and
-    // gives up cleanly at 45s rather than leaving the user staring at
-    // an unresponsive screen with no idea whether it's still working.
+    // ── Countdown-based progress engagement + hard timeout ──
+    // Purely cosmetic — never blocks or cancels the actual fetch. If
+    // the real result arrives at any point during either countdown,
+    // clearProgressTimers() below stops it immediately and the result
+    // renders right away, wherever the countdown happened to be.
+    // 0-30s ticks down "Fetching answer key... (30s)" to (1s), then
+    // 30-40s ticks down "Calculating score... (10s)" to (1s), then a
+    // static "Internet slow" message until the hard 45s cutoff.
     let timedOut = false;
-    const tier20 = setTimeout(() => {
-      fetchBtnText.textContent = 'Abhi bhi fetch ho raha hai... internet check karein';
-    }, 20000);
-    const tier30 = setTimeout(() => {
-      fetchBtnText.textContent = 'Bahut slow hai... behtar internet connection try karein';
-    }, 30000);
+    let fetchSecondsLeft = 30;
+    let calcSecondsLeft = 10;
+    let phase = 'fetching';
+
+    fetchBtnText.textContent = `Fetching answer key... (${fetchSecondsLeft}s)`;
+
+    const countdownInterval = setInterval(() => {
+      if (phase === 'fetching') {
+        fetchSecondsLeft--;
+        if (fetchSecondsLeft <= 0) {
+          phase = 'calculating';
+          fetchBtnText.textContent = `Calculating score... (${calcSecondsLeft}s)`;
+        } else {
+          fetchBtnText.textContent = `Fetching answer key... (${fetchSecondsLeft}s)`;
+        }
+      } else if (phase === 'calculating') {
+        calcSecondsLeft--;
+        if (calcSecondsLeft <= 0) {
+          phase = 'slow';
+          fetchBtnText.textContent = 'Internet bahut slow hai... calculate ho raha hai';
+          clearInterval(countdownInterval);
+        } else {
+          fetchBtnText.textContent = `Calculating score... (${calcSecondsLeft}s)`;
+        }
+      }
+    }, 1000);
+
     const hardTimeout = setTimeout(() => {
       timedOut = true;
     }, 45000);
 
     function clearProgressTimers() {
-      clearTimeout(tier20);
-      clearTimeout(tier30);
+      clearInterval(countdownInterval);
       clearTimeout(hardTimeout);
     }
 
@@ -697,8 +720,4 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
-
-
-
-
 
