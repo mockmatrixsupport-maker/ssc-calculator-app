@@ -76,6 +76,43 @@
     updateBellBadge: updateBellBadge
   };
 
+  // ── Bell icon click: checks permission before opening the page ──
+  // - granted  → go straight to notifications.html
+  // - denied   → Android won't re-show its own popup once denied, so
+  //              jump straight to the phone's per-app notification
+  //              settings screen instead (needs capacitor-native-settings)
+  // - not yet asked → trigger the real OS permission prompt, then open
+  //   notifications.html either way
+  function openNotificationSettings() {
+    var NativeSettings = Capacitor.Plugins.NativeSettings;
+    if (NativeSettings) {
+      NativeSettings.open({ optionAndroid: 'app_notification', optionIOS: 'app_notification' });
+    } else {
+      window.location.href = 'notifications.html'; // plugin not installed — fall back
+    }
+  }
+
+  function handleBellClick(e) {
+    e.preventDefault();
+    PushNotifications.checkPermissions().then(function (res) {
+      if (res.receive === 'granted') {
+        window.location.href = 'notifications.html';
+      } else if (res.receive === 'denied') {
+        openNotificationSettings();
+      } else {
+        PushNotifications.requestPermissions().then(function (r) {
+          if (r.receive === 'granted') PushNotifications.register();
+          window.location.href = 'notifications.html';
+        });
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var bellLink = document.getElementById('bellLink');
+    if (bellLink) bellLink.addEventListener('click', handleBellClick);
+  });
+
   // ── Listeners (safe to (re)register on every page load) ─────────
   PushNotifications.addListener('registration', function (token) {
     if (localStorage.getItem(LS_SUBSCRIBED_KEY) === token.value) return; // already subscribed this exact token
@@ -159,11 +196,12 @@
     slot.innerHTML =
       '<div class="card" id="notifPromptCard" style="display:flex;align-items:center;gap:12px;">' +
         '<div style="flex:1;">' +
-          '<div style="font-weight:700;font-size:0.85rem;margin-bottom:2px;">Get notified instantly</div>' +
-          '<div style="font-size:0.74rem;color:var(--text-muted,#888);">Know the moment a new answer key drops.</div>' +
+          '<div style="font-weight:700;font-size:0.85rem;margin-bottom:2px;">Allow Notification</div>' +
+          '<div style="font-size:0.74rem;color:var(--text-muted,#888);">to Get All Answer key related updates very fast</div>' +
         '</div>' +
         '<button onclick="RSMNotif.enableNotifications()" style="padding:8px 14px;border-radius:8px;background:#0f766e;color:#fff;border:none;font-weight:600;font-size:0.78rem;">Allow</button>' +
         '<button onclick="RSMNotif.dismissPrompt()" style="padding:8px 10px;border-radius:8px;background:transparent;border:none;color:var(--text-muted,#888);font-size:0.9rem;">✕</button>' +
       '</div>';
   });
 })();
+
