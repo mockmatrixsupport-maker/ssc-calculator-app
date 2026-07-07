@@ -34,7 +34,7 @@ const RSMFetchRouter = (() => {
    * @param {function} onLog - (message, level) for UI log box
    * @returns {Promise<{parts:Object, count:number, fromCache:boolean, family:string}>}
    */
-  async function resolve(url, onLog = () => {}) {
+  async function resolve(url, onLog = () => {}, expectedParts) {
     const trimmed = (url || '').trim();
     if (!trimmed) throw new Error('Answer key URL khali hai.');
 
@@ -61,7 +61,7 @@ const RSMFetchRouter = (() => {
 
     let result;
     if (family === 'ssc') {
-      result = await RSMFetcherSSC.fetchAll(trimmed, onLog);
+      result = await RSMFetcherSSC.fetchAll(trimmed, onLog, expectedParts);
     } else {
       result = await RSMFetcherRRB.fetchAll(trimmed, onLog);
     }
@@ -107,3 +107,4 @@ const RSMFetchRouter = (() => {
 
   return { detectExamFamily, resolve, saveCalculatedResult, clearCacheFor };
 })();
+
