@@ -599,11 +599,46 @@ function fillSelect(selectEl, options, opts = {}) {
       });
     }
 
+    // Looked up early (not just later for marking) so the exam's known
+    // section count can be passed into the fetcher — this is what lets
+    // SSC fetch all parts in parallel instead of probing sequentially.
+    const examObj = EXAMS.find(e => e.id === examSelect.value);
+
     resultsSection.classList.add('hidden');
     setBtnState('fetching');
 
+    // ── Tiered progress engagement + hard timeout ──
+    // Keeps the button text informative instead of sitting frozen on
+    // "Fetching answer key..." indefinitely on a slow connection, and
+    // gives up cleanly at 45s rather than leaving the user staring at
+    // an unresponsive screen with no idea whether it's still working.
+    let timedOut = false;
+    const tier20 = setTimeout(() => {
+      fetchBtnText.textContent = 'Abhi bhi fetch ho raha hai... internet check karein';
+    }, 20000);
+    const tier30 = setTimeout(() => {
+      fetchBtnText.textContent = 'Bahut slow hai... behtar internet connection try karein';
+    }, 30000);
+    const hardTimeout = setTimeout(() => {
+      timedOut = true;
+    }, 45000);
+
+    function clearProgressTimers() {
+      clearTimeout(tier20);
+      clearTimeout(tier30);
+      clearTimeout(hardTimeout);
+    }
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Fetch mein bahut zyada time lag raha hai (45+ sec). Kripya behtar internet connection ke saath dobara koshish karein.')), 45000);
+    });
+
     try {
-      const fetchResult = await RSMFetchRouter.resolve(url, () => {});
+      const fetchResult = await Promise.race([
+        RSMFetchRouter.resolve(url, () => {}, examObj ? examObj.parts : undefined),
+        timeoutPromise
+      ]);
+      clearProgressTimers();
       setBtnState('parsing');
 
       // IMPORTANT: use fetchResult.family (auto-detected from the actual
@@ -628,7 +663,6 @@ function fillSelect(selectEl, options, opts = {}) {
         // leaving them blank and producing 0.00 marks everywhere
         // while Right/Wrong still parse fine. Re-deriving fresh here
         // makes that whole class of bug impossible.
-        const examObj = EXAMS.find(e => e.id === examSelect.value);
         if (!examObj) {
           setBtnState('idle');
           return showError('Exam scheme could not be resolved — please reselect the exam and try again.');
@@ -646,7 +680,13 @@ function fillSelect(selectEl, options, opts = {}) {
       RSMUI.enterResultMode(RSM_CTX, url);
       resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
-      showError(e.message || 'Kuch galat ho gaya. Dobara koshish karein.');
+      clearProgressTimers();
+      setBtnState('idle');
+      if (timedOut || /45\+ sec/.test(e.message || '')) {
+        showError('Fetch cancel ho gaya — connection bahut slow tha. Behtar internet ke saath dobara try karein.');
+      } else {
+        showError(e.message || 'Kuch galat ho gaya. Dobara koshish karein.');
+      }
     }
   }
 
