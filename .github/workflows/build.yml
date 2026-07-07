@@ -27,7 +27,7 @@ jobs:
       - name: Stage web assets into www/
         run: |
           mkdir -p www
-          cp index.html calculator.html www/
+          cp index.html calculator.html notifications.html review.html www/
           cp calculators.json www/
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
@@ -36,6 +36,18 @@ jobs:
 
       - name: Add Android platform
         run: npx cap add android
+
+      # ── Firebase Cloud Messaging config ──────────────────────────
+      - name: Decode google-services.json into android/app/
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > android/app/google-services.json
+
+      - name: Add Google Services Gradle plugin
+        run: |
+          # Project-level build.gradle: add the classpath dependency
+          sed -i "/dependencies {/a\\        classpath 'com.google.gms:google-services:4.4.2'" android/build.gradle
+          # App-level build.gradle: apply the plugin (must come after the android {} block)
+          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
 
       - name: Copy web assets
         run: npx cap copy android
