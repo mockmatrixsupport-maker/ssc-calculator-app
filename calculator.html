@@ -615,15 +615,19 @@ function fillSelect(selectEl, options, opts = {}) {
     // 0-30s ticks down "Fetching answer key... (30s)" to (1s), then
     // 30-40s ticks down "Calculating score... (10s)" to (1s), then a
     // static "Internet slow" message until the hard 45s cutoff.
-    let timedOut = false;
-    let fetchSecondsLeft = 30;
-    let calcSecondsLeft = 10;
-    let phase = 'fetching';
 
-    fetchBtnText.textContent = `Fetching answer key... (${fetchSecondsLeft}s)`;
+    let timedOut = false;
+    let fetchSecondsLeft = 25;
+    let calcSecondsLeft = 10;
+    let phase = 'grace'; // 'grace' (first 5s, no number) -> 'fetching' -> 'calculating' -> 'slow'
+
+    fetchBtnText.textContent = 'Fetching answer key...';
 
     const countdownInterval = setInterval(() => {
-      if (phase === 'fetching') {
+      if (phase === 'grace') {
+        phase = 'fetching';
+        fetchBtnText.textContent = `Fetching answer key... (${fetchSecondsLeft}s)`;
+      } else if (phase === 'fetching') {
         fetchSecondsLeft--;
         if (fetchSecondsLeft <= 0) {
           phase = 'calculating';
@@ -642,6 +646,7 @@ function fillSelect(selectEl, options, opts = {}) {
         }
       }
     }, 1000);
+    
 
     const hardTimeout = setTimeout(() => {
       timedOut = true;
