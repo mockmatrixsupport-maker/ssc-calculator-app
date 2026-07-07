@@ -103,6 +103,20 @@ window.MathJax = {
   <div class="review-palette__grid" id="reviewPaletteGrid"></div>
 </div>
 
+<!-- Fixed bottom nav — app-like Previous/Next through the current
+     filter's question list, with a "Q x of y" position indicator. -->
+<div class="review-bottomnav" id="reviewBottomnav">
+  <button type="button" class="review-nav-btn" id="reviewPrevBtn" aria-label="Previous question">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <span>Previous</span>
+  </button>
+  <div class="review-nav-position" id="reviewNavPosition">1 / 1</div>
+  <button type="button" class="review-nav-btn" id="reviewNextBtn" aria-label="Next question">
+    <span>Next</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
+
 <script src="js/remote-loader.js?v=1"></script>
 <script>
   // Same as calculator.html: every app script goes through RSMLoader,
