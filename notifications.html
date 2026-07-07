@@ -42,6 +42,7 @@
   </div>
 </main>
 
+<script src="js/push-notifications.js"></script>
 <script>
 function render() {
   var list = (window.RSMNotif ? RSMNotif.getHistory() : []);
@@ -73,7 +74,6 @@ function escapeHtml(str) {
 render();
 if (window.RSMNotif) RSMNotif.markAllRead();
 </script>
-
-<script src="js/push-notifications.js"></script>
 </body>
 </html>
+
