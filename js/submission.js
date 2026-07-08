@@ -3,6 +3,16 @@
    Silent, non-blocking background submission to BOTH:
      1. AWS (API Gateway -> Lambda A) - Full Tracking Payload Warehouse
      2. Supabase (Direct REST API HTTP) - Lightweight Live Rank Master Row
+
+   UPDATED:
+   - on_conflict=exam_id,shift_id,roll_number added so merge-duplicates
+     actually upserts against the real UNIQUE constraint (previously
+     defaulted to the primary key, causing duplicate resubmits to error).
+   - NOT NULL columns (shift_id, category, gender) now get a safe 'NA'
+     fallback instead of null, since the DB schema rejects null there.
+   - Temporary console.error added on failed inserts so real Supabase
+     errors (RLS/policy/constraint) are visible instead of silently
+     swallowed. Remove this once confirmed working end-to-end.
 ═══════════════════════════════════════════════════ */
 
 const RSMSubmission = (() => {
@@ -11,6 +21,12 @@ const RSMSubmission = (() => {
   const BACKEND_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/submit';
   const SUPABASE_REST_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rank_master';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucXpnem5nanRlcW9wbnp5c2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjA0NjAsImV4cCI6MjA5OTA5NjQ2MH0.Pq74MzPgzS9VYiyUanjfj4D2A6OTfgGzqzdqbZ0SMiQ';
+
+  // on_conflict must match the real UNIQUE constraint on rank_master —
+  // without it, PostgREST's merge-duplicates defaults to the primary
+  // key (id), which is never sent, so duplicate roll numbers hit the
+  // real constraint as a raw error instead of being upserted.
+  const SUPABASE_UPSERT_URL = `${SUPABASE_REST_URL}?on_conflict=exam_id,shift_id,roll_number`;
 
   const QUEUE_KEY = 'rsm_submission_queue_v1';
   const MAX_QUEUE_SIZE = 200;       // oldest items dropped first past this
@@ -51,16 +67,18 @@ const RSMSubmission = (() => {
     try {
       const payload = {
         exam_id: formFields.examId || null,
-        shift_id: info.shift || null,
+        // shift_id / category / gender are NOT NULL in the schema — 'NA'
+        // fallback prevents a silent 400 when a value is genuinely missing
+        // (e.g. parser couldn't find a shift for a single-shift exam).
+        shift_id: info.shift || 'NA',
         roll_number: info.rollNo || null,
         score: result.totalScore,
-        category: formFields.category || null,
-        gender: formFields.gender || null,
-        zone: formFields.zone || null  // Saves zone if present, automatically stores NULL if not
+        category: formFields.category || 'NA',
+        gender: formFields.gender || 'NA',
+        zone: formFields.zone || null  // genuinely optional (non-RRB exams) — stays NULL
       };
 
-      // Native HTTP POST directly hitting Supabase PostgREST Pooler
-      const res = await fetch(SUPABASE_REST_URL, {
+      const res = await fetch(SUPABASE_UPSERT_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,9 +88,17 @@ const RSMSubmission = (() => {
         },
         body: JSON.stringify(payload)
       });
-      
+
+      if (!res.ok) {
+        // TEMP DEBUG — remove once you've confirmed inserts are working.
+        // 401/403 = RLS/policy issue. 400 = NOT NULL or bad payload.
+        // 409 = conflict target mismatch.
+        console.error('Supabase rank_master insert failed:', res.status, await res.text());
+      }
+
       return res.ok;
     } catch (e) {
+      console.error('Supabase rank_master insert error:', e);
       return false; // Silently falls back if network spikes
     }
   }
