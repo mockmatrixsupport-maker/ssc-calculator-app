@@ -2,16 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1024, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Answer Key — Rank Score Master</title>
 <link rel="icon" href="logo.jpg">
 <style>
-  /* ── App chrome (toolbar) — never printed, see @media print below ──
-     Both the toolbar and the injected content below share this page's
-     single fixed-width viewport, same as a real mobile browser's
-     "Desktop site" toggle — the toolbar renders a bit smaller as a
-     result, which is expected and matches that same behaviour. */
-  html { -webkit-text-size-adjust: 100%; }
+  /* ── App chrome (toolbar) — never printed, see @media print below ── */
   body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #f5f5f4; }
 
   .op-toolbar {
@@ -33,18 +28,8 @@
   /* The merged official content renders here, completely full-bleed,
      with whatever formatting the source portal originally used — we
      deliberately do NOT wrap it in our own app's css/style.css, since
-     that would fight the source page's own inline layout rules.
-
-     min-width matches the viewport's fixed width above: this is the
-     "view desktop site" behaviour on purpose. The source markup was
-     built with fixed-width tables/columns for a desktop screen and was
-     never responsive; forcing OUR viewport down to device-width just
-     squeezes that fixed layout into a phone's width and breaks it
-     (columns overlapping, the photo/table getting cut off). Rendering
-     it at its real width and letting the person pinch-zoom/pan is
-     exactly how any normal mobile browser shows this same official
-     page when visited directly. */
-  #officialPrintRoot { background: #fff; min-width: 1024px; }
+     that would fight the source page's own inline layout rules. */
+  #officialPrintRoot { background: #fff; }
   #officialPrintRoot.hidden, .op-loading.hidden, .op-error.hidden { display: none; }
 
   /* ── This is what actually keeps the printed/saved output clean:
@@ -153,4 +138,3 @@
 
 </body>
 </html>
-
