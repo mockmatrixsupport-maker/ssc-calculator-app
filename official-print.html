@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Answer Key — Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<style>
+  /* ── App chrome (toolbar) — never printed, see @media print below ── */
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #f5f5f4; }
+
+  .op-toolbar {
+    position: sticky; top: 0; z-index: 1000;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e5e5;
+  }
+  .op-toolbar button {
+    padding: 9px 14px; border-radius: 8px; border: none; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  }
+  .op-back { background: #f1f1ef; color: #333; }
+  .op-save { background: #0f766e; color: #fff; }
+  .op-save:disabled { opacity: 0.6; }
+
+  .op-loading, .op-error {
+    text-align: center; padding: 60px 20px; color: #888; font-size: 0.85rem;
+  }
+
+  /* The merged official content renders here, completely full-bleed,
+     with whatever formatting the source portal originally used — we
+     deliberately do NOT wrap it in our own app's css/style.css, since
+     that would fight the source page's own inline layout rules. */
+  #officialPrintRoot { background: #fff; }
+  #officialPrintRoot.hidden, .op-loading.hidden, .op-error.hidden { display: none; }
+
+  /* ── This is what actually keeps the printed/saved output clean:
+     the toolbar is excluded entirely from print, so capacitor-webview-print
+     (which prints the CURRENT full page) only ever outputs the merged
+     official content itself. ── */
+  @media print {
+    .op-toolbar { display: none !important; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<div class="op-toolbar no-print">
+  <button class="op-back" id="opBackBtn">← Back</button>
+  <button class="op-save" id="opSaveBtn">Save / Print Answer Key</button>
+</div>
+
+<div class="op-loading" id="opLoading">Preparing your answer key…</div>
+<div class="op-error hidden" id="opError">
+  This answer key couldn't be prepared. Please go back and try again.
+</div>
+<div id="officialPrintRoot" class="hidden"></div>
+
+<script>
+(function () {
+  const HANDOFF_KEY = 'rsm-official-print-handoff';
+
+  function consumeHandoff() {
+    let raw = null;
+    try {
+      raw = sessionStorage.getItem(HANDOFF_KEY);
+      sessionStorage.removeItem(HANDOFF_KEY); // one-time use, same as review.html's pattern
+    } catch (e) { /* storage unavailable */ }
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
+
+  function wipeHandoff() {
+    try { sessionStorage.removeItem(HANDOFF_KEY); } catch (e) {}
+  }
+  window.addEventListener('pagehide', wipeHandoff);
+  window.addEventListener('beforeunload', wipeHandoff);
+
+  const els = {
+    loading: document.getElementById('opLoading'),
+    error: document.getElementById('opError'),
+    root: document.getElementById('officialPrintRoot'),
+    backBtn: document.getElementById('opBackBtn'),
+    saveBtn: document.getElementById('opSaveBtn')
+  };
+
+  function init() {
+    const data = consumeHandoff();
+    if (!data || !data.bodyHtml) {
+      els.loading.classList.add('hidden');
+      els.error.classList.remove('hidden');
+      return;
+    }
+
+    document.title = data.title || 'Answer Key';
+
+    // Inject the merged, de-duplicated styles collected from every
+    // part into this page's own <head> — the source portal's
+    // formatting renders exactly as it did originally, just without
+    // the watermark/scripts/dead buttons that were stripped already.
+    if (data.styles && data.styles.length) {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = data.styles.join('\n');
+      document.head.appendChild(styleEl);
+    }
+
+    els.root.innerHTML = data.bodyHtml;
+    els.loading.classList.add('hidden');
+    els.root.classList.remove('hidden');
+  }
+
+  els.backBtn.addEventListener('click', () => {
+    wipeHandoff();
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = 'calculator.html';
+  });
+
+  els.saveBtn.addEventListener('click', async () => {
+    els.saveBtn.disabled = true;
+    els.saveBtn.textContent = 'Opening…';
+    try {
+      if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.WebviewPrint) {
+        await Capacitor.Plugins.WebviewPrint.print({ name: document.title || 'Answer-Key' });
+      } else if (typeof window.print === 'function') {
+        window.print(); // plain browser preview fallback
+      }
+    } catch (e) {
+      // user cancelled the native print sheet, or it genuinely failed —
+      // either way there's nothing more useful to do here than reset the button
+    } finally {
+      els.saveBtn.disabled = false;
+      els.saveBtn.textContent = 'Save / Print Answer Key';
+    }
+  });
+
+  init();
+})();
+</script>
+
+</body>
+</html>
