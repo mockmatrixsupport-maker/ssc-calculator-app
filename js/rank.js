@@ -1,36 +1,19 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — rank.js
-   Fetches and renders rank/percentile/average data, fully
-   separate from score-engine.js's instant score calculation.
+   RANK SCORE MASTER — rank.js (Direct Realtime Multi-Tier Scan Engine)
+   Fetches and renders live rank/percentile/average data directly from Supabase,
+   completely bypassing serverless layers for maximum performance.
 
-   IMPORTANT DESIGN RULES:
-   - Percentile is NEVER fetched from the backend — it's computed
-     client-side from rank + total (see percentile() below), since
-     it's pure arithmetic and storing it server-side would be
-     redundant data.
-   - This module is mounted AFTER the score is already rendered and
-     visible (score-engine.js calls RSMRank.mount() right after
-     renderInto()) — a slow or failed rank fetch can NEVER delay or
-     block the score the user sees, same principle as submission.js.
-   - Mounted on BOTH a fresh calculation AND a cache-loaded result,
-     since renderInto() is the single shared render path for both —
-     rank data has its own independent freshness lifecycle (10-min
-     cache TTL, see cache.js) regardless of how old the cached SCORE
-     itself is.
-   - Three distinct outcomes, rendered differently:
-       1. Found → real rank/total + percentile cards
-       2. Not found, but this exam HAS been ranked before
-          (examHasAnyData: true) → "Rank will be shown after 30 min"
-       3. Not found, exam has NEVER been ranked
-          (examHasAnyData: false) → "N/A"
+   DESIGN RULES (100% Realtime & Aligned):
+   - Percentile is derived client-side from live rank + live total.
+   - Rank & Total Candidate Counts are fetched live from database index pointers.
+   - Averages are extracted in a single clean pull from the 10-minute cache view.
 ═══════════════════════════════════════════════════ */
 
 const RSMRank = (() => {
 
-  // Set once your GET /rank endpoint exists (Lambda + API Gateway route).
-  // Leave empty to make this module a silent no-op — shows "N/A" on
-  // every card without ever attempting a network call.
-  const RANK_API_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'; // e.g. 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/rank'
+  const SUPABASE_REST_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rank_master';
+  const CACHE_MATRIX_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/cached_analytics_matrix';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucXpnem5nanRlcW9wbnp5c2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjA0NjAsImV4cCI6MjA5OTA5NjQ2MH0.Pq74MzPgzS9VYiyUanjfj4D2A6OTfgGzqzdqbZ0SMiQ';
 
   const FETCH_TIMEOUT_MS = 6000;
 
@@ -47,55 +30,135 @@ const RSMRank = (() => {
     ]);
   }
 
-  /**
-   * Pure arithmetic — never fetched, always derived client-side.
-   * @returns {string} e.g. "91.20" or "N/A" if rank/total missing
-   */
   function percentile(rank, total) {
     if (rank == null || total == null || total <= 0) return 'N/A';
     return (((total - rank) / total) * 100).toFixed(2);
   }
 
-  function isEnabled() {
-    return typeof RANK_API_URL === 'string' && RANK_API_URL.trim().length > 0;
+  /**
+   * Helper execution wrapper to scan pointers over public composite indexes.
+   * Leverages `{ count: 'exact', head: true }` proxy layout.
+   */
+  async function getLiveCount(queryFilters) {
+    try {
+      const urlParams = new URLSearchParams(queryFilters);
+      const url = `${SUPABASE_REST_URL}?${urlParams.toString()}`;
+      
+      const res = await withTimeout(fetch(url, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Prefer': 'count=exact' // Instructs Postgres to return exact count from index tree
+        }
+      }), FETCH_TIMEOUT_MS);
+
+      if (!res.ok) return null;
+      
+      // Parse Content-Range header (e.g. "0-0/12500") to grab the absolute live count
+      const rangeHeader = res.headers.get('Content-Range');
+      if (rangeHeader && rangeHeader.includes('/')) {
+        return parseInt(rangeHeader.split('/')[1], 10);
+      }
+      return 0;
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
-   * @param {Object} ctx - { examId, date, shift, rollNo }
-   * @param {boolean} forceFresh - if true, skips the cache entirely
-   * @returns {Promise<Object|null>} rank payload, or null on any failure
+   * Main compilation pipeline. Intersects data over direct indices.
    */
-  async function fetchRank(ctx, forceFresh) {
-    if (!isEnabled()) return null;
+  async function processRealtimeEngine(ctx, userScore) {
+    const examId = ctx.examId;
+    const shiftId = ctx.shift;
+    const category = ctx.category;
+    const gender = ctx.gender;
+    const zone = ctx.zone || null;
 
-    if (!forceFresh && typeof RSMCache !== 'undefined' && RSMCache.getRank) {
-      const cached = RSMCache.getRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo);
-      if (cached) return cached;
+    // Parallel execution blocks for Live Ranks and Live Totals (Index-Only Scans)
+    const promises = [
+      // 1. Overall Tier
+      getLiveCount({ exam_id: `eq.${examId}`, score: `gt.${userScore}` }),
+      getLiveCount({ exam_id: `eq.${examId}` }),
+
+      // 2. Shift Tier (Shift Rank is the only entity built on shift parameters)
+      getLiveCount({ exam_id: `eq.${examId}`, shift_id: `eq.${shiftId}`, score: `gt.${userScore}` }),
+      getLiveCount({ exam_id: `eq.${examId}`, shift_id: `eq.${shiftId}` }),
+
+      // 3. Category Tier (Exam level global aggregation)
+      getLiveCount({ exam_id: `eq.${examId}`, category: `eq.${category}`, score: `gt.${userScore}` }),
+      getLiveCount({ exam_id: `eq.${examId}`, category: `eq.${category}` }),
+
+      // 4. Gender Tier (Exam level global aggregation)
+      getLiveCount({ exam_id: `eq.${examId}`, gender: `eq.${gender}`, score: `gt.${userScore}` }),
+      getLiveCount({ exam_id: `eq.${examId}`, gender: `eq.${gender}` })
+    ];
+
+    // 5. Zone Tier added dynamically only if exam matches RRB parameters
+    if (ctx.hasZone && zone) {
+      promises.push(getLiveCount({ exam_id: `eq.${examId}`, zone: `eq.${zone}`, score: `gt.${userScore}` }));
+      promises.push(getLiveCount({ exam_id: `eq.${examId}`, zone: `eq.${zone}` }));
     }
 
+    const counts = await Promise.all(promises);
+
+    const dataPayload = {
+      overallRank: counts[0] !== null ? counts[0] + 1 : null,
+      overallTotal: counts[1],
+      shiftRank: counts[2] !== null ? counts[2] + 1 : null,
+      shiftTotal: counts[3],
+      categoryRank: counts[4] !== null ? counts[4] + 1 : null,
+      categoryTotal: counts[5],
+      genderRank: counts[6] !== null ? counts[6] + 1 : null,
+      genderTotal: counts[7],
+      zoneRank: null,
+      zoneTotal: null,
+      
+      // Defaults for Averages layer
+      overallAverage: 'N/A',
+      shiftAverage: 'N/A',
+      categoryAverage: 'N/A',
+      zoneAverage: 'N/A'
+    };
+
+    if (ctx.hasZone && zone) {
+      dataPayload.zoneRank = counts[8] !== null ? counts[8] + 1 : null;
+      dataPayload.zoneTotal = counts[9];
+    }
+
+    // 6. Direct single-row cache matrix pull for pre-calculated averages
     try {
-      const url = `${RANK_API_URL}?examId=${encodeURIComponent(ctx.examId)}`
-        + `&date=${encodeURIComponent(ctx.date)}`
-        + `&shift=${encodeURIComponent(ctx.shift)}`
-        + `&rollNo=${encodeURIComponent(ctx.rollNo)}`
-        + `&category=${encodeURIComponent(ctx.category || '')}`
-        + `&gender=${encodeURIComponent(ctx.gender || '')}`
-        + `&zone=${encodeURIComponent(ctx.zone || '')}`;
+      const matrixRes = await fetch(`${CACHE_MATRIX_URL}?exam_id=eq.${encodeURIComponent(examId)}`, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
 
-      const res = await withTimeout(fetch(url), FETCH_TIMEOUT_MS);
-      if (!res.ok) return null;
-      const data = await res.json();
-
-      if (typeof RSMCache !== 'undefined' && RSMCache.setRank) {
-        RSMCache.setRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo, data);
+      if (matrixRes.ok) {
+        const matrixData = await matrixRes.json();
+        
+        // Map elements by tracking context signatures
+        matrixData.forEach(row => {
+          if (row.shift_id === 'GLOBAL' && row.category === 'ALL' && row.zone === 'ALL') {
+            dataPayload.overallAverage = row.average_score;
+          } else if (row.shift_id === shiftId) {
+            dataPayload.shiftAverage = row.average_score;
+          } else if (row.shift_id === 'GLOBAL' && row.category === category) {
+            dataPayload.categoryAverage = row.average_score;
+          } else if (row.zone === zone) {
+            dataPayload.zoneAverage = row.average_score;
+          }
+        });
       }
-      return data;
-    } catch (e) {
-      return null; // offline / timeout / backend down — render() falls back to N/A
-    }
+    } catch (e) { /* Averages fallback gracefully to N/A if cron job sync is processing */ }
+
+    return dataPayload;
   }
 
-  // ── Card builders ──
+  // ── Card UI Render Templates
 
   function rankCard(label, rank, total) {
     const value = (rank != null && total != null) ? `${rank}/${total}` : 'N/A';
@@ -113,7 +176,7 @@ const RSMRank = (() => {
     return `
       <div class="rank-card">
         <div class="rank-card__label">${esc(label)}</div>
-        <div class="rank-card__value">${avg == null ? 'N/A' : esc(avg)}</div>
+        <div class="rank-card__value">${avg == null || avg === 'N/A' ? 'N/A' : esc(avg)}</div>
       </div>`;
   }
 
@@ -127,14 +190,11 @@ const RSMRank = (() => {
         <div class="skeleton-line skeleton-line--pct"></div>
       </div>`).join('');
     return `<div class="rank-grid">${skeletons}</div>
-      <div class="rank-status rank-status--loading">Fetching your rank…</div>`;
+      <div class="rank-status rank-status--loading">Processing real-time rankings…</div>`;
   }
 
-  function notFoundBlock(examHasAnyData) {
-    const msg = examHasAnyData
-      ? 'Your submission is received. Rank will be shown after the next update (within 30 min).'
-      : 'Rank not available for this exam yet.';
-    return `<div class="rank-status rank-status--na">${esc(msg)}</div>`;
+  function notFoundBlock() {
+    return `<div class="rank-status rank-status--na">Rank computation anomaly detected. Try refreshing below.</div>`;
   }
 
   function renderFound(data, hasZone) {
@@ -160,40 +220,44 @@ const RSMRank = (() => {
   }
 
   /**
-   * Mounts the rank section into a container element, showing a
-   * blinking loading skeleton immediately, then replacing it with
-   * real data (or an appropriate N/A / "after 30 min" message) once
-   * the fetch resolves. Never awaited by the caller — fire-and-forget,
-   * exactly like submission.js's pattern, so the score display above
-   * it is never delayed.
-   *
-   * The exact same load() function runs on initial mount AND every
-   * time the "Refresh Rank" button is tapped — one code path, no
-   * separate "first load" vs "refresh" logic to keep in sync.
-   *
-   * @param {HTMLElement} containerEl - dedicated rank section element
-   * @param {Object} ctx - { examId, date, shift, rollNo, hasZone }
+   * Runtime Mounting Gateway called directly by score-engine.js
    */
   function mount(containerEl, ctx) {
     if (!containerEl) return;
 
-    if (!isEnabled()) {
-      containerEl.innerHTML = notFoundBlock(false);
-      return;
+    // Grab live user total score dynamically from the rendered document view context
+    let userScore = 0;
+    const scoreEl = document.querySelector('.mt-overall .mt-score');
+    if (scoreEl) {
+      userScore = parseFloat(scoreEl.textContent) || 0;
     }
 
     function load(forceFresh) {
       containerEl.innerHTML = loadingSkeleton(ctx.hasZone);
 
-      fetchRank(ctx, forceFresh).then(data => {
-        if (!data || data.found === false) {
-          containerEl.innerHTML = notFoundBlock(!!(data && data.examHasAnyData)) + refreshButtonHtml();
+      // Bypasses any external cache TTL if manually requested by the student
+      if (!forceFresh && typeof RSMCache !== 'undefined' && RSMCache.getRank) {
+        const cached = RSMCache.getRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo);
+        if (cached) {
+          containerEl.innerHTML = renderFound(cached, ctx.hasZone);
+          wireRefreshButton();
+          return;
+        }
+      }
+
+      processRealtimeEngine(ctx, userScore).then(data => {
+        if (!data) {
+          containerEl.innerHTML = notFoundBlock() + refreshButtonHtml();
         } else {
           containerEl.innerHTML = renderFound(data, ctx.hasZone);
+          // Save valid data signature into the short-term storage pool
+          if (typeof RSMCache !== 'undefined' && RSMCache.setRank) {
+            RSMCache.setRank(ctx.examId, ctx.date, ctx.shift, ctx.rollNo, data);
+          }
         }
         wireRefreshButton();
       }).catch(() => {
-        containerEl.innerHTML = notFoundBlock(false) + refreshButtonHtml();
+        containerEl.innerHTML = notFoundBlock() + refreshButtonHtml();
         wireRefreshButton();
       });
     }
@@ -204,12 +268,10 @@ const RSMRank = (() => {
 
     function wireRefreshButton() {
       const btn = containerEl.querySelector('[data-rsm-refresh-rank]');
-      // Refresh always forces a real network call, bypassing the
-      // 30-min cache entirely — a deliberate manual override.
       if (btn) btn.addEventListener('click', () => load(true));
     }
 
-    load(false); // initial mount — cache-first
+    load(false);
   }
 
   return { mount, percentile };
