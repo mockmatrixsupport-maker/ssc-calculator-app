@@ -32,7 +32,7 @@ jobs:
       - name: Stage web assets into www/
         run: |
           mkdir -p www
-          cp index.html calculator.html notifications.html review.html www/
+          cp index.html calculator.html notifications.html review.html official-print.html www/
           cp calculators.json www/
           cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
