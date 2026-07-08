@@ -319,13 +319,26 @@ const RSMReviewBuilder = (() => {
   // ═══════════════════════════════════════════════
   // SSC extraction
   // ═══════════════════════════════════════════════
-  const SSC_IMG_BASE = 'https://sscexams.cbexams.com/'; // qimg/... is relative to this host
+  // qimg/... paths are relative to whatever host/path the answer-key
+  // page actually loaded from — NOT a fixed guessed domain. This
+  // mirrors mmhtoolup.py exactly: it resolves every image with
+  // urljoin(resp.url, src), where resp.url is the real URL the live
+  // session fetched. A hardcoded fallback host is wrong for any
+  // exam/session using a different subdomain or path, which silently
+  // 404s every SSC image (the broken/blank-option bug). SSC_IMG_BASE
+  // below is only a last-resort fallback for the rare case no source
+  // URL was available to build() at all.
+  const SSC_IMG_BASE = 'https://sscexams.cbexams.com/';
 
-  function sscResolveImg(src) {
+  function sscResolveImg(src, baseUrl) {
     if (!src) return '';
-    if (/^https?:\/\//i.test(src)) return src;
-    if (src.startsWith('/')) return SSC_IMG_BASE.replace(/\/$/, '') + src;
-    return SSC_IMG_BASE + src.replace(/^\.?\//, '');
+    if (/^https?:\/\//i.test(src) || src.startsWith('data:')) return src;
+    try {
+      return new URL(src, baseUrl || SSC_IMG_BASE).href;
+    } catch (e) {
+      if (src.startsWith('/')) return SSC_IMG_BASE.replace(/\/$/, '') + src;
+      return SSC_IMG_BASE + src.replace(/^\.?\//, '');
+    }
   }
 
   function sscCandidateInfo(html) {
@@ -347,7 +360,7 @@ const RSMReviewBuilder = (() => {
 
   // Parses each "<!-- Option N -->...<!-- Candidate Response -->" block,
   // pulling BOTH the color (for status) and the image/text content.
-  function sscParseOptionBlocks(qBlock) {
+  function sscParseOptionBlocks(qBlock, baseUrl) {
     const options = [];
     const optRe = /<!--\s*Option\s+(\d+)\s*-->([\s\S]*?)(?=<!--\s*Option\s+\d+\s*-->|<!--\s*Candidate\s*Response|$)/gi;
     let m;
@@ -361,7 +374,7 @@ const RSMReviewBuilder = (() => {
       const tdRe = /<td[^>]*width=['"]49%['"][^>]*>([\s\S]*?)<\/td>/i;
       const tdM = block.match(tdRe);
       const contentHtml = tdM ? tdM[1] : block;
-      const { text, images } = resolveInlineContent(contentHtml, null, sscResolveImg);
+      const { text, images } = resolveInlineContent(contentHtml, baseUrl, sscResolveImg);
       options.push({
         label: String.fromCharCode(64 + num), // 1->A, 2->B...
         text,
@@ -397,7 +410,7 @@ const RSMReviewBuilder = (() => {
     return 'skipped';
   }
 
-  function sscParsePart(html, partNum) {
+  function sscParsePart(html, partNum, baseUrl) {
     let sectionName = `Part ${partNum}`;
     const spanM = html.match(/<span[^>]*id=['"]lblsubject['"][^>]*>([^<]+)<\/span>/i);
     if (spanM) sectionName = decodeEntities(spanM[1]);
@@ -419,7 +432,7 @@ const RSMReviewBuilder = (() => {
       const qTdM = block.match(/Q\.No:&nbsp;\d+\s*<\/font>\s*<\/td>\s*<td[^>]*width=['"]85%['"][^>]*>([\s\S]*?)<\/td>/i);
       const qContent = qTdM ? qTdM[1] : '';
 
-      const options = sscParseOptionBlocks(block);
+      const options = sscParseOptionBlocks(block, baseUrl);
       if (options.length < 4) return; // not a real question block
 
       const status = sscQuestionStatusAndChosen(options);
@@ -442,7 +455,7 @@ const RSMReviewBuilder = (() => {
         qno: qInfo.qno,
         qId: null,
         status,
-        question: resolveInlineContent(qContent, null, sscResolveImg),
+        question: resolveInlineContent(qContent, baseUrl, sscResolveImg),
         options: finalOptions
       });
     });
@@ -450,7 +463,7 @@ const RSMReviewBuilder = (() => {
     return { name: sectionName, questions };
   }
 
-  function buildSSC(parts) {
+  function buildSSC(parts, sourceUrl) {
     const sortedKeys = Object.keys(parts).sort((a, b) => {
       const na = parseInt(a.replace(/\D/g, ''), 10) || 0;
       const nb = parseInt(b.replace(/\D/g, ''), 10) || 0;
@@ -466,7 +479,7 @@ const RSMReviewBuilder = (() => {
         const info = sscCandidateInfo(html);
         if (Object.keys(info).length) meta = Object.assign(meta, info);
       }
-      sections.push(sscParsePart(html, idx + 1));
+      sections.push(sscParsePart(html, idx + 1, sourceUrl));
     });
 
     return { meta, sections };
@@ -657,10 +670,11 @@ const RSMReviewBuilder = (() => {
    */
   function build(family, parts, sourceUrl) {
     if (family === 'rrb') return buildRRB(parts, sourceUrl);
-    return buildSSC(parts);
+    return buildSSC(parts, sourceUrl);
   }
 
   return { build };
 })();
+
 
 
