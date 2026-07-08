@@ -185,14 +185,16 @@ const RSMScoreEngine = (() => {
   function buildActionRows() {
     return `
       <div class="action-row action-row--primary">
-        <button type="button" class="btn-pill" data-action="review-paper">Review Paper</button>
+        <button type="button" class="btn-pill" data-action="review-paper">See Wrong Questions</button>
         <button type="button" class="btn-pill" data-action="attempt-mock">Attempt as Mock</button>
       </div>
       <div class="action-row action-row--icons">
         <button type="button" class="icon-btn" data-action="new-url">${ICONS.newUrl}<span>New URL</span></button>
         <button type="button" class="icon-btn" data-action="share">${ICONS.share}<span>Share</span></button>
         <button type="button" class="icon-btn" data-action="image">${ICONS.image}<span>Image</span></button>
-        <button type="button" class="icon-btn" data-action="pdf">${ICONS.pdf}<span>PDF</span></button>
+      </div>
+      <div class="action-row action-row--primary">
+        <button type="button" class="btn-pill" data-action="official-print">Save Answer Key PDF</button>
       </div>`;
   }
 
@@ -324,6 +326,7 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
 
 
 
