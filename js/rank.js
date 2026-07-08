@@ -15,7 +15,6 @@
 
 const RSMRank = (() => {
 
-  const SUPABASE_REST_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rank_master';
   const SUPABASE_RPC_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rpc/get_all_ranks';
   const CACHE_MATRIX_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/cached_analytics_matrix';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucXpnem5nanRlcW9wbnp5c2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjA0NjAsImV4cCI6MjA5OTA5NjQ2MH0.Pq74MzPgzS9VYiyUanjfj4D2A6OTfgGzqzdqbZ0SMiQ';
@@ -232,5 +231,17 @@ const RSMRank = (() => {
     load(false);
   }
 
-  return { mount, percentile };
+  /**
+   * Shows the cosmetic loading skeleton only — no network call. Lets a
+   * caller (score-engine.js) display progress immediately while it
+   * defers the actual mount() (which does the real fetch) until some
+   * other condition is ready (e.g. this candidate's own submission
+   * having settled first).
+   */
+  function showLoading(containerEl, hasZone) {
+    if (!containerEl) return;
+    containerEl.innerHTML = loadingSkeleton(hasZone);
+  }
+
+  return { mount, percentile, showLoading };
 })();
