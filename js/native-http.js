@@ -38,7 +38,7 @@ const RSMHttp = (() => {
         // some response pages are large (RRB single-page papers can be 1-3MB) —
         // give it room and don't let Capacitor silently truncate
         readTimeout: 60000,
-        connectTimeout: 30000
+        connectTimeout: 20000
       });
       return { status: result.status, data: result.data };
     }
