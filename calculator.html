@@ -489,15 +489,18 @@ function fillSelect(selectEl, options, opts = {}) {
         document.getElementById('fetchIcon')?.remove();
         fetchBtnText.insertAdjacentHTML('beforebegin', '<span class="btn-spinner" id="fetchIcon"></span>');
         fetchBtnText.textContent = 'Fetching answer key...';
+        fetchBtnText.style.color = '';
         break;
       case 'parsing':
         fetchBtnText.textContent = 'Calculating score...';
+        fetchBtnText.style.color = '';
         break;
       case 'done':
         document.getElementById('fetchIcon')?.remove();
         fetchBtnText.insertAdjacentHTML('beforebegin',
           '<svg class="btn-check" id="fetchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>');
         fetchBtnText.textContent = 'Done';
+        fetchBtnText.style.color = '';
         setTimeout(() => setBtnState('idle'), 1800);
         break;
       case 'idle':
@@ -506,6 +509,7 @@ function fillSelect(selectEl, options, opts = {}) {
         document.getElementById('fetchIcon')?.remove();
         fetchBtnText.insertAdjacentHTML('beforebegin', ORIGINAL_ICON);
         fetchBtnText.textContent = 'Fetch & Calculate Score';
+        fetchBtnText.style.color = '';
         break;
     }
   }
@@ -616,6 +620,26 @@ function fillSelect(selectEl, options, opts = {}) {
     // 30-40s ticks down "Calculating score... (10s)" to (1s), then a
     // static "Internet slow" message until the hard 45s cutoff.
 
+    // ── Real-time status driven directly by the fetcher's own onLog
+    // callback. Previously this passed () => {} — every message
+    // fetcher-ssc.js actually emits (which part is being fetched right
+    // now, which ones came back missing, retry attempts, the final
+    // "X/Y sections captured" summary) was generated and thrown away.
+    // The button text now IS that live log, last message wins, so the
+    // real per-section progress is visible as it happens — not just a
+    // blind timer, and not only a summary at the very end. ──
+    let sawAnyLog = false;
+
+    function onFetchLog(message, level) {
+      sawAnyLog = true;
+      fetchBtnText.textContent = message;
+      fetchBtnText.style.color = (level === 'err' || level === 'warn') ? '#b45309' : '';
+    }
+
+    // ── Fallback countdown — only used before the fetcher has emitted
+    // its first real message (covers RSMHttp itself being slow to even
+    // start). The moment any real log line has been shown, this stops
+    // overwriting it. ──
     let timedOut = false;
     let fetchSecondsLeft = 25;
     let calcSecondsLeft = 10;
@@ -624,6 +648,7 @@ function fillSelect(selectEl, options, opts = {}) {
     fetchBtnText.textContent = 'Fetching answer key...';
 
     const countdownInterval = setInterval(() => {
+      if (sawAnyLog) return; // real per-section status is already showing — don't clobber it
       if (phase === 'grace') {
         phase = 'fetching';
         fetchBtnText.textContent = `Fetching answer key... (${fetchSecondsLeft}s)`;
@@ -662,7 +687,7 @@ function fillSelect(selectEl, options, opts = {}) {
 
     try {
       const fetchResult = await Promise.race([
-        RSMFetchRouter.resolve(url, () => {}, examObj ? examObj.parts : undefined),
+        RSMFetchRouter.resolve(url, onFetchLog, examObj ? examObj.parts : undefined),
         timeoutPromise
       ]);
       clearProgressTimers();
@@ -724,4 +749,5 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
+
 
