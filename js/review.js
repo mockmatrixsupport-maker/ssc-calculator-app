@@ -30,6 +30,7 @@
     title: document.getElementById('reviewTitle'),
     subtitle: document.getElementById('reviewSubtitle'),
     filterbar: document.getElementById('reviewFilterbar'),
+    sectionbar: document.getElementById('reviewSectionbar'),
     body: document.getElementById('reviewBody'),
     backBtn: document.getElementById('reviewBackBtn'),
     paletteBtn: document.getElementById('reviewPaletteBtn'),
@@ -190,10 +191,11 @@
   // colored by status, scoped to whichever filter chip is currently
   // active. Numbers are the qno straight from the source HTML — the
   // same number the candidate saw while attempting the real paper.
+  // Buttons carry their position in the CURRENT filter's list (not the
+  // qno itself) — SSC papers restart numbering at Q1 in every Part, so
+  // matching purely by qno could jump to the wrong section's question.
   function renderPalette() {
-    const list = currentFilter === 'all'
-      ? FLAT_QUESTIONS
-      : FLAT_QUESTIONS.filter(q => q.status === currentFilter);
+    const list = currentList();
 
     els.paletteFilterLabel.textContent = FILTER_LABEL[currentFilter] || currentFilter;
 
@@ -202,30 +204,25 @@
       return;
     }
 
-    els.paletteGrid.innerHTML = list.map(q => `
-      <button type="button" class="review-palette__btn ${esc(q.status)}" data-qno="${esc(q.qno)}">${esc(q.qno)}</button>
+    els.paletteGrid.innerHTML = list.map((q, idx) => `
+      <button type="button" class="review-palette__btn ${esc(q.status)}${idx === currentIndex ? ' active-jump' : ''}" data-idx="${idx}">${esc(q.qno)}</button>
     `).join('');
 
     els.paletteGrid.querySelectorAll('.review-palette__btn').forEach(btn => {
-      btn.addEventListener('click', () => jumpToQuestion(btn.getAttribute('data-qno')));
+      btn.addEventListener('click', () => jumpToIndex(parseInt(btn.getAttribute('data-idx'), 10)));
     });
   }
 
-  function jumpToQuestion(qno) {
+  // Jumps the single-question focus view straight to a given position
+  // in the current filter's list — used by both the palette and the
+  // section-indicator bar. No scrolling: this just swaps which one
+  // question card is on screen, same as tapping Next/Previous.
+  function jumpToIndex(idx) {
     closePalette();
     const list = currentList();
-    const idx = list.findIndex(q => String(q.qno) === String(qno));
-    if (idx !== -1) {
-      currentIndex = idx;
-      updateBottomNav();
-    }
-    const target = document.getElementById('rq-card-' + qno);
-    if (!target) return;
-    setTimeout(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      target.classList.add('active-jump');
-      setTimeout(() => target.classList.remove('active-jump'), 1400);
-    }, 220); // let the panel's own slide-out transition finish first
+    if (idx < 0 || idx >= list.length) return;
+    currentIndex = idx;
+    renderCurrentQuestion();
   }
 
   function openPalette() {
@@ -260,9 +257,8 @@
       btn.addEventListener('click', () => {
         currentFilter = btn.getAttribute('data-filter');
         renderFilterbar();
-        renderBody();
+        renderBody(); // filter changed — jumps back to question 1 of the new list
         renderPalette(); // keep the side palette in sync with whichever filter is active
-        window.scrollTo({ top: els.filterbar.offsetTop - 1, behavior: 'smooth' });
       });
     });
   }
@@ -273,42 +269,136 @@
       : FLAT_QUESTIONS.filter(q => q.status === currentFilter);
   }
 
-  function renderBody() {
-    const list = currentList();
-    currentIndex = 0; // filter just changed (or first render) — reset to the first question in it
-    updateBottomNav();
+  // ── Short-form section names (mobile-friendly chip bar) ──
+  // Same keyword rules as RSMScoreEngine.shortSectionName() in
+  // score-engine.js, kept in sync here since review.js runs on its own
+  // page without that file loaded. Two extensions on top of the base
+  // rule set, both needed for the section bar specifically:
+  //   1. If the real name also carries a number ("Reasoning-2",
+  //      "General Awareness 1"), keep it in the short label too
+  //      ("Reasoning 2") — otherwise two differently-numbered sections
+  //      would collapse into identical, indistinguishable chips.
+  //   2. Names that match no keyword at all (score-engine.js's table
+  //      just shows these full-width with scroll) don't have room for
+  //      that here — the chip bar assigns them sequential fallback
+  //      labels instead: PART-A, PART-B, PART-C, PART-D...
+  const SECTION_KEYWORD_RULES = [
+    { keys: ['quant', 'math', 'numerical'], label: 'Maths' },
+    { keys: ['intelligence', 'reasoning', 'mental ability'], label: 'Reasoning' },
+    { keys: ['general knowledge', 'general awareness', 'general science'], label: 'GK & GS' },
+    { keys: ['computer'], label: 'Computer' },
+    { keys: ['hindi'], label: 'Hindi' },
+    { keys: ['english'], label: 'English' }
+  ];
+  const PART_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-    if (!list.length) {
-      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div><div class="review-scroll-spacer"></div>`;
+  function shortSectionName(name) {
+    const clean = (name || '').trim();
+    const key = clean.toLowerCase();
+    for (const rule of SECTION_KEYWORD_RULES) {
+      if (rule.keys.some(k => key.includes(k))) {
+        const numM = clean.match(/\d+/);
+        return numM ? `${rule.label} ${numM[0]}` : rule.label;
+      }
+    }
+    return null; // caller assigns the PART-A/B/C/D fallback
+  }
+
+  // Builds { fullName -> shortLabel } for every section up front, so
+  // the fallback letters stay stable across re-renders (filter change,
+  // Prev/Next, palette jumps) instead of shifting around.
+  function buildSectionLabelMap(names) {
+    const map = {};
+    let fallbackIdx = 0;
+    names.forEach(name => {
+      const short = shortSectionName(name);
+      if (short) {
+        map[name] = short;
+      } else {
+        map[name] = 'PART-' + (PART_LETTERS[fallbackIdx] || (fallbackIdx + 1));
+        fallbackIdx += 1;
+      }
+    });
+    return map;
+  }
+
+  // ── Section indicator bar ──
+  // Shows every section name from the paper (Part-A/B, Math/GK/
+  // Reasoning, etc.) in its original order, shortened to fit as chips.
+  // Whichever section the question currently on screen belongs to is
+  // highlighted green. Sections with no questions in the active status
+  // filter are shown dimmed and are not clickable. Tapping a section
+  // jumps the focus view to that section's first question in the
+  // current filter. The full original name is always still available
+  // via the chip's title tooltip.
+  function renderSectionbar() {
+    const names = [];
+    (DATA.sections || []).forEach(sec => {
+      if (sec.questions && sec.questions.length && !names.includes(sec.name)) names.push(sec.name);
+    });
+
+    if (names.length <= 1) {
+      els.sectionbar.innerHTML = '';
       return;
     }
 
-    // Group by section for readability, preserving original section order.
-    const bySection = [];
-    const seen = new Map();
-    list.forEach(q => {
-      if (!seen.has(q.sectionName)) {
-        seen.set(q.sectionName, { name: q.sectionName, items: [] });
-        bySection.push(seen.get(q.sectionName));
-      }
-      seen.get(q.sectionName).items.push(q);
+    const labelMap = buildSectionLabelMap(names);
+    const list = currentList();
+    const activeQ = list[currentIndex];
+
+    els.sectionbar.innerHTML = names.map(name => {
+      const hasMatch = list.some(q => q.sectionName === name);
+      const isActive = !!activeQ && activeQ.sectionName === name;
+      const classes = ['review-section-chip'];
+      if (isActive) classes.push('active');
+      if (!hasMatch) classes.push('disabled');
+      return `<button type="button" class="${classes.join(' ')}" data-section="${esc(name)}" title="${esc(name)}" ${hasMatch ? '' : 'disabled'}>${esc(labelMap[name])}</button>`;
+    }).join('');
+
+    els.sectionbar.querySelectorAll('.review-section-chip:not(.disabled)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.getAttribute('data-section');
+        const idx = currentList().findIndex(q => q.sectionName === name);
+        if (idx !== -1) jumpToIndex(idx);
+      });
     });
+  }
 
-    els.body.innerHTML = bySection.map(sec => `
-      <div class="review-section-heading">${esc(sec.name)}</div>
-      ${sec.items.map(buildCard).join('')}
-    `).join('') + '<div class="review-scroll-spacer"></div>';
+  // ── Single-question focus view ──
+  // Only ONE question card is ever on screen at a time — no vertical
+  // list, no scrolling through the paper. Prev/Next, the palette, and
+  // the section bar all just change `currentIndex` and re-render this
+  // one card, the same "focus view" test.html itself uses.
+  function renderCurrentQuestion() {
+    const list = currentList();
+    updateBottomNav();
+    renderSectionbar();
 
-    // Re-typeset any math on the freshly-injected cards.
+    if (!list.length) {
+      els.body.innerHTML = `<div class="review-empty">No questions in this filter.</div>`;
+      return;
+    }
+
+    const q = list[currentIndex];
+    els.body.innerHTML = buildCard(q);
+
+    // Re-typeset math on the freshly-injected card.
     if (window.MathJax && window.MathJax.typesetPromise) {
       window.MathJax.typesetPromise([els.body]).catch(() => {});
     }
   }
 
+  // Filter changed (or first load) — always start from the first
+  // question of the new list.
+  function renderBody() {
+    currentIndex = 0;
+    renderCurrentQuestion();
+  }
+
   // ── Fixed bottom Previous/Next nav ──
-  // Moves through whichever list the active filter chip currently shows,
-  // same list order the cards are rendered in (grouped by section, but
-  // flattened here since only linear position matters for Prev/Next).
+  // Moves through whichever list the active filter chip currently shows —
+  // this is the ONLY way through the paper now (no scrolling list): each
+  // tap swaps the single card in view via renderCurrentQuestion().
   function updateBottomNav() {
     const list = currentList();
     const total = list.length;
@@ -317,29 +407,18 @@
     els.nextBtn.disabled = total === 0 || currentIndex >= total - 1;
   }
 
-  function scrollToIndex(idx) {
-    const list = currentList();
-    const q = list[idx];
-    if (!q) return;
-    const target = document.getElementById('rq-card-' + q.qno);
-    if (!target) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    target.classList.add('active-jump');
-    setTimeout(() => target.classList.remove('active-jump'), 1400);
-  }
-
   els.prevBtn.addEventListener('click', () => {
     if (currentIndex <= 0) return;
     currentIndex -= 1;
-    updateBottomNav();
-    scrollToIndex(currentIndex);
+    renderCurrentQuestion();
+    window.scrollTo({ top: 0, behavior: 'auto' });
   });
   els.nextBtn.addEventListener('click', () => {
     const total = currentList().length;
     if (currentIndex >= total - 1) return;
     currentIndex += 1;
-    updateBottomNav();
-    scrollToIndex(currentIndex);
+    renderCurrentQuestion();
+    window.scrollTo({ top: 0, behavior: 'auto' });
   });
 
   function flatten(data) {
@@ -411,4 +490,5 @@
   }
 })();
    
+
 
