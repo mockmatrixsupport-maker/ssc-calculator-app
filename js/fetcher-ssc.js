@@ -124,7 +124,9 @@ const RSMFetcherSSC = (() => {
   async function fetchAll(url, onLog = () => {}, expectedParts) {
     const split = splitBaseAndKey(url);
     if (!split) {
-      throw new Error('Invalid SSC URL format. Could not find ViewCandResponse.aspx / EncKey in the link.');
+      const err = new Error('Invalid SSC URL format. Could not find ViewCandResponse.aspx / EncKey in the link.');
+      err.invalidUrl = true;
+      throw err;
     }
     const { base, enckey } = split;
     const knownCount = expectedParts && expectedParts > 0 ? expectedParts : DEFAULT_PARTS_IF_UNKNOWN;
@@ -184,7 +186,9 @@ const RSMFetcherSSC = (() => {
     onLog(`${capturedCount}/${knownCount} sections captured`, capturedCount === knownCount ? 'ok' : 'warn');
 
     if (capturedCount === 0) {
-      throw new Error('Koi part fetch nahi hua. URL galat ho sakta hai ya answer key expire ho chuki hai.');
+      const err = new Error('Koi part fetch nahi hua. URL galat ho sakta hai ya answer key expire ho chuki hai.');
+      err.invalidUrl = true;
+      throw err;
     }
 
     return { parts, count: capturedCount };
@@ -192,4 +196,5 @@ const RSMFetcherSSC = (() => {
 
   return { matchesSSC, fetchAll };
 })();
+
 
