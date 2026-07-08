@@ -28,7 +28,7 @@ const RSMScoreEngine = (() => {
   // broken initials-acronym (the old word-splitting logic produced
   // garbage like "P(I" for exactly that kind of name).
   const SECTION_KEYWORD_RULES = [
-    { keys: ['quant', 'math'], label: 'Maths' },
+    { keys: ['quant', 'math', 'Numerical'], label: 'Maths' },
     { keys: ['intelligence', 'reasoning', 'mental ability'], label: 'Reasoning' },
     { keys: ['general knowledge', 'general awareness', 'general science'], label: 'GK & GS' },
     { keys: ['computer'], label: 'Computer' },
