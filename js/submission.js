@@ -64,13 +64,29 @@ const RSMSubmission = (() => {
    * Sends strictly required parameters over the optimized composite indexes.
    */
   async function directSupabaseSubmit(formFields, info, result) {
+    // exam_id is NOT NULL and is the partition key for every rank query —
+    // unlike shift/category/gender, there's no safe placeholder for it.
+    // If it's missing, skip this write rather than corrupt cross-exam counts.
+    if (!formFields.examId) {
+      console.error('Supabase rank_master insert skipped: examId missing from formFields');
+      return false;
+    }
+
     try {
       const payload = {
-        exam_id: formFields.examId || null,
+        exam_id: formFields.examId,
         // shift_id / category / gender are NOT NULL in the schema — 'NA'
         // fallback prevents a silent 400 when a value is genuinely missing
         // (e.g. parser couldn't find a shift for a single-shift exam).
-        shift_id: info.shift || 'NA',
+        //
+        // shift_id is date+time combined, NOT just the raw time — a bare
+        // time range (e.g. "9:00 AM - 10:30 AM") collides across different
+        // dates within the same multi-day exam_id, merging unrelated
+        // shifts into one. Must match score-engine.js's buildRankCtx()
+        // exactly, since that's what builds the shift key rank.js later
+        // reads back with — a mismatch here means shift rank silently
+        // reads 0 total even though rows exist.
+        shift_id: (info.date && info.shift) ? `${info.date}_${info.shift}` : (info.shift || 'NA'),
         roll_number: info.rollNo || null,
         score: result.totalScore,
         category: formFields.category || 'NA',
@@ -201,12 +217,23 @@ const RSMSubmission = (() => {
 
   /**
    * Unified Entry Point - Fired right after local score calculations are rendered
+   *
+   * @returns {Promise<boolean>} resolves once the Supabase (Pipeline A)
+   *   write has settled — true if it succeeded or was already submitted
+   *   earlier, false if it failed. Callers (score-engine.js) use this to
+   *   sequence the rank-count fetch AFTER this candidate's own row has
+   *   actually committed, instead of firing both at once — that race is
+   *   what caused rank to occasionally read back "1/0" on a fresh check.
+   *   Pipeline B (AWS queue) is untouched — still fully fire-and-forget,
+   *   never awaited, never blocks anything.
    */
   function submit(result, meta) {
-    if (!isEnabled()) return;
+    if (!isEnabled()) return Promise.resolve(false);
 
     if (typeof RSMCache !== 'undefined' && typeof RSMCache.isSubmitted === 'function' && meta.url) {
-      if (RSMCache.isSubmitted(meta.url)) return;
+      // Already submitted in an earlier run — that row already exists,
+      // so it's safe for the caller to fetch rank right away.
+      if (RSMCache.isSubmitted(meta.url)) return Promise.resolve(true);
     }
 
     const info = result.candidateInfo || {};
@@ -215,18 +242,24 @@ const RSMSubmission = (() => {
       formFields = RSMCache.getFormFields(meta.url) || {};
     }
 
-    // 1. Pipeline A: Direct lightweight upsert execution to Supabase Table (Async Fire-And-Forget)
-    directSupabaseSubmit(formFields, info, result).then((supabaseOk) => {
+    // 1. Pipeline A: Direct lightweight upsert execution to Supabase Table.
+    //    Still async and non-blocking for the score card — but now the
+    //    caller gets this promise back so IT can decide to wait before
+    //    fetching rank, instead of this file silently racing it.
+    const supabasePromise = directSupabaseSubmit(formFields, info, result).then((supabaseOk) => {
       // If Supabase transaction completes 200, trigger duplicate prevention flag lock locally
       if (supabaseOk && typeof RSMCache !== 'undefined' && typeof RSMCache.markSubmitted === 'function' && meta.url) {
         RSMCache.markSubmitted(meta.url);
       }
+      return supabaseOk;
     });
 
     // 2. Pipeline B: Standard full payload tracking bundle processed through local AWS cache queue
     const awsPayload = buildPayload(result, meta);
     enqueue(awsPayload);
     flushQueue();
+
+    return supabasePromise;
   }
 
   // ── Automated invisible background synchronizers
@@ -239,4 +272,3 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
-
