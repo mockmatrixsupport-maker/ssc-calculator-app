@@ -79,9 +79,7 @@
   }
 
   // Renders a question/option's {text, images} content, splicing image
-  // urls back in at their {{img:N}} placeholder positions (RRB path) or
-  // just appending them after the text (SSC path, which is pure images
-  // with no interleaved placeholder text).
+  // urls back in at their {{img:N}} placeholder positions.
   //
   // Math formulas are NOT part of `images` — review-json-builder.js
   // already decoded them into literal inline LaTeX ("\( ... \)") text,
@@ -108,12 +106,27 @@
       ? `<img class="rq-img-inline" src="${esc(url)}" loading="lazy" alt="" onerror="this.style.display='none'">`
       : '';
 
+    let out;
     if (/\{\{img:\d+\}\}/.test(text)) {
-      return text.replace(/\{\{img:(\d+)\}\}/g, (full, idx) => imgTag(images[parseInt(idx, 10)]));
+      out = text.replace(/\{\{img:(\d+)\}\}/g, (full, idx) => imgTag(images[parseInt(idx, 10)]));
+    } else {
+      // SSC-style: no placeholders, images ARE the content (often
+      // bilingual EN/HI stacked) — render text (if any) then every
+      // image in order.
+      out = text + images.map(imgTag).join('');
     }
-    // SSC-style: no placeholders, images ARE the content (often bilingual
-    // EN/HI stacked) — render text (if any) then every image in order.
-    return text + images.map(imgTag).join('');
+
+    // Source markup separates a stacked EN/HI image pair with
+    // "<br><br>" (a full blank line), meant for plain-text spacing.
+    // Images are already block-level (each takes its own line via
+    // CSS), so keeping those breaks too stacks a blank line ON TOP of
+    // the image's own margin — the oversized gap between option rows.
+    // Collapse any run of breaks to one, then drop it entirely right
+    // next to an image, where it's pure redundant space either way.
+    return out
+      .replace(/(?:\s*<br\s*\/?>\s*){2,}/gi, '<br>')
+      .replace(/<br\s*\/?>\s*(<img)/gi, '$1')
+      .replace(/(<img[^>]*>)\s*<br\s*\/?>/gi, '$1');
   }
 
   const STATUS_LABEL = { correct: 'Correct', wrong: 'Wrong', skipped: 'Skipped', bonus: 'Bonus' };
