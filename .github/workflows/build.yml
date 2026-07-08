@@ -23,7 +23,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # ── Stage the web app into www/ ──────────────────────────────
+      - name: Read version from package.json
+        id: pkgversion
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Stage web assets into www/
         run: |
           mkdir -p www
@@ -37,44 +40,37 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      # ── Firebase Cloud Messaging config ──────────────────────────
       - name: Decode google-services.json into android/app/
         run: |
           echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > android/app/google-services.json
 
       - name: Add Google Services Gradle plugin
         run: |
-          # Project-level build.gradle: add the classpath dependency
           sed -i "/dependencies {/a\\        classpath 'com.google.gms:google-services:4.4.2'" android/build.gradle
-          # App-level build.gradle: apply the plugin (must come after the android {} block)
           echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
 
       - name: Copy web assets
         run: npx cap copy android
-        
+
       - name: Sync
         run: npx cap sync android
 
       - name: Update Target SDK and Version
         run: |
-          # Force Android 14 (API 34) compliance for Play Protect
           sed -i 's/targetSdkVersion = [0-9]*/targetSdkVersion = 34/g' android/variables.gradle
           sed -i 's/compileSdkVersion = [0-9]*/compileSdkVersion = 34/g' android/variables.gradle
-          # Dynamically bump version code based on GitHub Actions run number so it installs over the old APK
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
-          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"${{ steps.pkgversion.outputs.version }}\"/" android/app/build.gradle
 
       - name: Allow mixed content in WebView
         run: |
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
           grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
-      # ── NEW STEP: INJECTS PERMISSIONS DYNAMICALLY ─────────────────
       - name: Add Storage, Media, and Notification Permissions
         run: |
           PERMISSIONS="<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"\/>\n    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"\/>\n    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"\/>\n    <uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"\/>\n\n    <application"
           sed -i "s/<application/$PERMISSIONS/" android/app/src/main/AndroidManifest.xml
-      # ──────────────────────────────────────────────────────────────
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -82,12 +78,10 @@ jobs:
       - name: Patch release signing config into build.gradle
         run: python3 patch_gradle_signing.py
 
-      # ── Decode keystore from secret ──────────────────────────────
       - name: Decode signing keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
-      # ── Build signed RELEASE APK ─────────────────────────────────
       - name: Build Signed Release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -107,7 +101,6 @@ jobs:
           name: RankScoreMaster-Signed-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
-      # ── Also build AAB (needed for Play Store) ───────────────────
       - name: Build Signed AAB (Play Store bundle)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
