@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — fetcher-ssc.js  (v4 — parallel fetch + retry pass + summary)
+   RANK SCORE MASTER — fetcher-ssc.js  (v5 — reordered stagger + retry pass + summary)
    Fetches all parts (sections) of an SSC response sheet from
    sscexams.cbexams.com style URLs.
 
@@ -11,7 +11,7 @@
    and each exam's exact section count is now maintained directly in
    exams-ssc.json's "parts" field, all parts are fetched IN PARALLEL,
    trusting that configured count completely — no extra probing beyond
-   it, aside from the retry pass added in v4 below.
+   it, aside from the retry pass added in v4.
 
    Small stagger (STAGGER_MS) between each request's START (not its
    completion) is kept — firing every request in the exact same
@@ -19,7 +19,23 @@
    portals' protection; a small stagger avoids that while still being
    dramatically faster than fully sequential.
 
-   WHAT'S IN v4:
+   WHAT'S NEW IN v5:
+   - Fetch ORDER changed. Requests no longer fire 1, 2, 3, ... N in
+     numeric order. Part 2 now fires FIRST (at 60ms, not 0ms), then
+     parts 3, 4, ... N follow in order, and part 1 fires LAST. This
+     is purely about which request hits the server first — total
+     wall-clock time is unaffected since it's still bounded by the
+     slowest single request.
+   - Each in-flight promise is tagged with its real part number
+     (via the `order` array + `partPromises` pairing) instead of
+     relying on array position to imply part number. This matters
+     BECAUSE the fetch order is no longer 1..N — using array index
+     as the part number after reordering would silently mislabel
+     responses (e.g. part 2's HTML saved as `p1`). Tagging keeps
+     every response mapped to its correct `parts.pN` key regardless
+     of what order it was requested in.
+
+   WHAT'S IN v4 (unchanged):
    - Retry pass: any part that comes back empty/failed in the first
      parallel burst gets ONE retry — run alone, sequentially, after
      everything else has already settled, rather than bundled back
@@ -86,6 +102,18 @@ const RSMFetcherSSC = (() => {
   }
 
   /**
+   * Builds the fetch order: part 2 first, then 3..knownCount in order,
+   * then part 1 last. If knownCount === 1, there's only part 1 anyway.
+   */
+  function buildFetchOrder(knownCount) {
+    if (knownCount <= 1) return [1];
+    const order = [];
+    for (let i = 2; i <= knownCount; i++) order.push(i);
+    order.push(1);
+    return order;
+  }
+
+  /**
    * @param {string} url - the pasted SSC answer key URL (any part)
    * @param {function} onLog - (message, level) called for live progress logging
    * @param {number} [expectedParts] - known section count for this exam,
@@ -105,21 +133,24 @@ const RSMFetcherSSC = (() => {
 
     // ── First pass: fire all known parts in parallel, with a tiny
     // stagger on each request's START (not a sequential wait for
-    // completion). Trusts knownCount completely. ──
-    const partPromises = [];
-    for (let i = 1; i <= knownCount; i++) {
-      const p = (async (partNum, delay) => {
-        if (delay > 0) await sleep(delay);
-        return fetchOnePart(base, enckey, partNum, onLog);
-      })(i, (i - 1) * STAGGER_MS);
-      partPromises.push(p);
-    }
+    // completion). Fetch ORDER is part 2 first, then 3..N, then part 1
+    // last — but each promise is tagged with its real part number, so
+    // reordering never affects where a response ends up getting saved. ──
+    const order = buildFetchOrder(knownCount);
+    const partPromises = order.map((partNum, idx) => {
+      const delay = (idx + 1) * STAGGER_MS; // first request still fires at 60ms, not 0ms
+      const promise = (async (pn, d) => {
+        await sleep(d);
+        return fetchOnePart(base, enckey, pn, onLog);
+      })(partNum, delay);
+      return { partNum, promise };
+    });
 
-    const results = await Promise.all(partPromises);
+    const results = await Promise.all(partPromises.map(p => p.promise));
     const parts = {};
     const missingPartNums = [];
     results.forEach((htmlText, idx) => {
-      const partNum = idx + 1;
+      const partNum = partPromises[idx].partNum; // tagged, not inferred from array position
       if (htmlText) {
         parts[`p${partNum}`] = htmlText;
       } else {
@@ -161,3 +192,4 @@ const RSMFetcherSSC = (() => {
 
   return { matchesSSC, fetchAll };
 })();
+
