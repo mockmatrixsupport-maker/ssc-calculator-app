@@ -40,7 +40,27 @@ const RSMOfficialPrint = (() => {
 
   const HANDOFF_KEY = 'rsm-official-print-handoff';
 
-  function sanitizePart(rawHtml) {
+  // Every <img> in the raw portal HTML (tick/cross status icons,
+  // qimg/... question images) uses a path relative to whatever page
+  // the source portal originally served from — same as the SSC image
+  // bug already fixed in review-json-builder.js's sscResolveImg(). Once
+  // that markup is merged into OUR OWN app page, those relative paths
+  // resolve against the wrong host entirely and 404 (the missing
+  // tick/cross icons). Rewrite every src to an absolute URL here,
+  // using the real fetched page URL as the base — exactly the same
+  // urljoin(resp.url, src) fix mmhtoolup.py already does server-side.
+  function resolveImages(doc, baseUrl) {
+    if (!baseUrl) return;
+    doc.querySelectorAll('img[src]').forEach(img => {
+      const src = img.getAttribute('src');
+      if (!src || /^https?:\/\//i.test(src) || src.startsWith('data:')) return;
+      try {
+        img.setAttribute('src', new URL(src, baseUrl).href);
+      } catch (e) { /* leave malformed src as-is */ }
+    });
+  }
+
+  function sanitizePart(rawHtml, baseUrl) {
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
     // Kill every script outright — this alone removes the anti-tamper
@@ -59,6 +79,9 @@ const RSMOfficialPrint = (() => {
     // paths from inside the app — drop the link, keep the inline
     // <style> blocks (already present) which carry the real formatting.
     doc.querySelectorAll('link[rel="stylesheet"]').forEach(el => el.remove());
+
+    // Fix every image's src BEFORE serializing — see resolveImages() above.
+    resolveImages(doc, baseUrl);
 
     // Unwrap <form> — keep its children (the real content), drop the
     // tag itself so nothing tries to submit anywhere.
@@ -83,9 +106,11 @@ const RSMOfficialPrint = (() => {
   /**
    * @param {Object<string,string>} parts - e.g. { p1: '<html>...', p2: '...' }
    *   same shape fetcher-ssc.js / fetcher-rrb.js already produce.
+   * @param {string} [baseUrl] - the real page URL the parts were fetched
+   *   from, used to resolve every relative image src to absolute.
    * @returns {{ styles: string[], bodyHtml: string }}
    */
-  function mergeParts(parts) {
+  function mergeParts(parts, baseUrl) {
     const partKeys = Object.keys(parts).sort((a, b) => {
       const na = parseInt(a.replace(/\D/g, ''), 10) || 0;
       const nb = parseInt(b.replace(/\D/g, ''), 10) || 0;
@@ -97,7 +122,7 @@ const RSMOfficialPrint = (() => {
     const bodyPieces = [];
 
     partKeys.forEach((key, idx) => {
-      const { styles, bodyHtml } = sanitizePart(parts[key]);
+      const { styles, bodyHtml } = sanitizePart(parts[key], baseUrl);
       styles.forEach(s => {
         if (!seenStyles.has(s)) { seenStyles.add(s); allStyles.push(s); }
       });
@@ -119,13 +144,14 @@ const RSMOfficialPrint = (() => {
     const pdfData = cardEl && cardEl._rsmPdfData;
     const parts = pdfData && pdfData.parts;
     const examName = (meta && meta.examName) || (pdfData && pdfData.examName) || 'Answer Key';
+    const url = (meta && meta.url) || (pdfData && pdfData.url);
 
     if (!parts || !Object.keys(parts).length) {
       return { ok: false, message: 'Please recalculate this result once, then try again' };
     }
 
     try {
-      const merged = mergeParts(parts);
+      const merged = mergeParts(parts, url);
       sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({
         title: examName,
         styles: merged.styles,
@@ -140,3 +166,4 @@ const RSMOfficialPrint = (() => {
 
   return { HANDOFF_KEY, mergeParts, openOfficialPrint };
 })();
+
