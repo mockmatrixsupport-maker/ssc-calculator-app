@@ -25,7 +25,9 @@ const RSMFetcherRRB = (() => {
    */
   async function fetchAll(url, onLog = () => {}) {
     if (!url || !url.startsWith('http')) {
-      throw new Error('Invalid RRB URL. Link must start with http(s)://');
+      const err = new Error('Invalid RRB URL. Link must start with http(s)://');
+      err.invalidUrl = true;
+      throw err;
     }
 
     onLog('RRB response sheet fetch ho raha hai...', 'info');
@@ -45,7 +47,9 @@ const RSMFetcherRRB = (() => {
     }
 
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} — response sheet load nahi hui. Link expire ho sakta hai.`);
+      const err = new Error(`HTTP ${response.status} — response sheet load nahi hui. Link expire ho sakta hai.`);
+      err.invalidUrl = true;
+      throw err;
     }
 
     const htmlText = response.data || '';
@@ -56,7 +60,9 @@ const RSMFetcherRRB = (() => {
                         htmlText.includes('Chosen Option');
 
     if (!looksValid) {
-      throw new Error('Page fetch ho gaya par response sheet jaisa nahi lagta. Link check karo.');
+      const err = new Error('Page fetch ho gaya par response sheet jaisa nahi lagta. Link check karo.');
+      err.invalidUrl = true;
+      throw err;
     }
 
     onLog(`OK — page fetched (${htmlText.length.toLocaleString()} chars)`, 'ok');
@@ -66,3 +72,4 @@ const RSMFetcherRRB = (() => {
 
   return { matchesRRB, fetchAll };
 })();
+
