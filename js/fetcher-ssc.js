@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — fetcher-ssc.js  (v3 — parallel fetch, no safety net)
+   RANK SCORE MASTER — fetcher-ssc.js  (v4 — parallel fetch + retry pass + summary)
    Fetches all parts (sections) of an SSC response sheet from
    sscexams.cbexams.com style URLs.
 
@@ -10,19 +10,31 @@
    decent connection. Since parser-ssc.js treats 1 part = 1 section,
    and each exam's exact section count is now maintained directly in
    exams-ssc.json's "parts" field, all parts are fetched IN PARALLEL,
-   trusting that configured count completely — no extra probing, no
-   safety-net request beyond it.
+   trusting that configured count completely — no extra probing beyond
+   it, aside from the retry pass added in v4 below.
 
    Small stagger (STAGGER_MS) between each request's START (not its
    completion) is kept — firing every request in the exact same
    millisecond can look like a synchronized bot burst to some exam
    portals' protection; a small stagger avoids that while still being
    dramatically faster than fully sequential.
+
+   WHAT'S IN v4:
+   - Retry pass: any part that comes back empty/failed in the first
+     parallel burst gets ONE retry — run alone, sequentially, after
+     everything else has already settled, rather than bundled back
+     into another simultaneous burst. Only helps TRANSIENT failures
+     (server hiccup, brief rate limit) — a structurally wrong URL will
+     fail identically on retry too.
+   - Summary log: fetchAll() now logs "X/Y sections captured" once
+     everything (including retries) has settled, so it's visible how
+     many of the exam's known sections actually came through.
 ═══════════════════════════════════════════════════ */
 
 const RSMFetcherSSC = (() => {
 
   const STAGGER_MS = 60; // ms between each request's START, not completion
+  const RETRY_GAP_MS = 300; // brief pause before each retry, gives the server room to recover
   const DEFAULT_PARTS_IF_UNKNOWN = 4; // fallback only if an exam's config is missing "parts"
 
   function matchesSSC(url) {
@@ -91,9 +103,9 @@ const RSMFetcherSSC = (() => {
 
     onLog(`${knownCount} sections ek saath fetch ho rahe hain...`, 'info');
 
-    // ── Fire all known parts in parallel, with a tiny stagger on each
-    // request's START (not a sequential wait for completion). Trusts
-    // knownCount completely — no probing beyond it. ──
+    // ── First pass: fire all known parts in parallel, with a tiny
+    // stagger on each request's START (not a sequential wait for
+    // completion). Trusts knownCount completely. ──
     const partPromises = [];
     for (let i = 1; i <= knownCount; i++) {
       const p = (async (partNum, delay) => {
@@ -105,17 +117,47 @@ const RSMFetcherSSC = (() => {
 
     const results = await Promise.all(partPromises);
     const parts = {};
+    const missingPartNums = [];
     results.forEach((htmlText, idx) => {
-      if (htmlText) parts[`p${idx + 1}`] = htmlText;
+      const partNum = idx + 1;
+      if (htmlText) {
+        parts[`p${partNum}`] = htmlText;
+      } else {
+        missingPartNums.push(partNum);
+      }
     });
 
-    if (Object.keys(parts).length === 0) {
+    // ── Retry pass: anything missed above gets exactly ONE more try,
+    // run sequentially and alone — not bundled back into another
+    // simultaneous burst — after everything else has already settled.
+    if (missingPartNums.length > 0) {
+      onLog(`${missingPartNums.length} section(s) missed — retrying: ${missingPartNums.join(', ')}`, 'info');
+      for (const partNum of missingPartNums) {
+        await sleep(RETRY_GAP_MS);
+        const retryResult = await fetchOnePart(base, enckey, partNum, onLog);
+        if (retryResult) {
+          parts[`p${partNum}`] = retryResult;
+          onLog(`Part ${partNum}: recovered on retry`, 'ok');
+        } else {
+          onLog(`Part ${partNum}: still missing after retry`, 'warn');
+        }
+      }
+    }
+
+    const capturedCount = Object.keys(parts).length;
+
+    // ── Summary: always logged, success or partial, so it's visible
+    // exactly how many of the exam's known sections actually came
+    // through — e.g. "4/5 sections captured" if one genuinely never
+    // recovered even after the retry pass.
+    onLog(`${capturedCount}/${knownCount} sections captured`, capturedCount === knownCount ? 'ok' : 'warn');
+
+    if (capturedCount === 0) {
       throw new Error('Koi part fetch nahi hua. URL galat ho sakta hai ya answer key expire ho chuki hai.');
     }
 
-    return { parts, count: Object.keys(parts).length };
+    return { parts, count: capturedCount };
   }
 
   return { matchesSSC, fetchAll };
 })();
-
