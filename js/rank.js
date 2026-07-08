@@ -3,15 +3,20 @@
    Fetches and renders live rank/percentile/average data directly from Supabase,
    completely bypassing serverless layers for maximum performance.
 
+   UPDATED: all rank/total tiers are now fetched in a SINGLE call to the
+   get_all_ranks() Postgres function (RPC) instead of 8-10 separate
+   count requests. Same indexes, same query plans, just one round trip.
+
    DESIGN RULES (100% Realtime & Aligned):
    - Percentile is derived client-side from live rank + live total.
-   - Rank & Total Candidate Counts are fetched live from database index pointers.
+   - Rank & Total Candidate Counts are fetched live via a single RPC call.
    - Averages are extracted in a single clean pull from the 10-minute cache view.
 ═══════════════════════════════════════════════════ */
 
 const RSMRank = (() => {
 
   const SUPABASE_REST_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rank_master';
+  const SUPABASE_RPC_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rpc/get_all_ranks';
   const CACHE_MATRIX_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/cached_analytics_matrix';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucXpnem5nanRlcW9wbnp5c2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjA0NjAsImV4cCI6MjA5OTA5NjQ2MH0.Pq74MzPgzS9VYiyUanjfj4D2A6OTfgGzqzdqbZ0SMiQ';
 
@@ -36,98 +41,51 @@ const RSMRank = (() => {
   }
 
   /**
-   * Helper execution wrapper to scan pointers over public composite indexes.
-   * Leverages `{ count: 'exact', head: true }` proxy layout.
-   */
-  async function getLiveCount(queryFilters) {
-    try {
-      const urlParams = new URLSearchParams(queryFilters);
-      const url = `${SUPABASE_REST_URL}?${urlParams.toString()}`;
-      
-      const res = await withTimeout(fetch(url, {
-        method: 'GET',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Prefer': 'count=exact' // Instructs Postgres to return exact count from index tree
-        }
-      }), FETCH_TIMEOUT_MS);
-
-      if (!res.ok) return null;
-      
-      // Parse Content-Range header (e.g. "0-0/12500") to grab the absolute live count
-      const rangeHeader = res.headers.get('Content-Range');
-      if (rangeHeader && rangeHeader.includes('/')) {
-        return parseInt(rangeHeader.split('/')[1], 10);
-      }
-      return 0;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /**
-   * Main compilation pipeline. Intersects data over direct indices.
+   * Main compilation pipeline. Single RPC call gets all tier ranks/totals
+   * in one round trip, then a second call pulls pre-computed averages
+   * from the materialized view cache.
    */
   async function processRealtimeEngine(ctx, userScore) {
     const examId = ctx.examId;
-    const shiftId = ctx.shift;
-    const category = ctx.category;
-    const gender = ctx.gender;
-    const zone = ctx.zone || null;
+    let dataPayload;
 
-    // Parallel execution blocks for Live Ranks and Live Totals (Index-Only Scans)
-    const promises = [
-      // 1. Overall Tier
-      getLiveCount({ exam_id: `eq.${examId}`, score: `gt.${userScore}` }),
-      getLiveCount({ exam_id: `eq.${examId}` }),
+    // 1. Single RPC call — replaces 8-10 separate count requests
+    try {
+      const res = await withTimeout(fetch(SUPABASE_RPC_URL, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          p_exam_id: examId,
+          p_shift_id: ctx.shift,
+          p_category: ctx.category,
+          p_gender: ctx.gender,
+          p_zone: ctx.hasZone ? ctx.zone : null,
+          p_score: userScore
+        })
+      }), FETCH_TIMEOUT_MS);
 
-      // 2. Shift Tier (Shift Rank is the only entity built on shift parameters)
-      getLiveCount({ exam_id: `eq.${examId}`, shift_id: `eq.${shiftId}`, score: `gt.${userScore}` }),
-      getLiveCount({ exam_id: `eq.${examId}`, shift_id: `eq.${shiftId}` }),
-
-      // 3. Category Tier (Exam level global aggregation)
-      getLiveCount({ exam_id: `eq.${examId}`, category: `eq.${category}`, score: `gt.${userScore}` }),
-      getLiveCount({ exam_id: `eq.${examId}`, category: `eq.${category}` }),
-
-      // 4. Gender Tier (Exam level global aggregation)
-      getLiveCount({ exam_id: `eq.${examId}`, gender: `eq.${gender}`, score: `gt.${userScore}` }),
-      getLiveCount({ exam_id: `eq.${examId}`, gender: `eq.${gender}` })
-    ];
-
-    // 5. Zone Tier added dynamically only if exam matches RRB parameters
-    if (ctx.hasZone && zone) {
-      promises.push(getLiveCount({ exam_id: `eq.${examId}`, zone: `eq.${zone}`, score: `gt.${userScore}` }));
-      promises.push(getLiveCount({ exam_id: `eq.${examId}`, zone: `eq.${zone}` }));
+      if (!res.ok) {
+        console.error('get_all_ranks RPC failed:', res.status, await res.text());
+        return null;
+      }
+      dataPayload = await res.json();
+      if (!dataPayload) return null;
+    } catch (e) {
+      console.error('get_all_ranks RPC error:', e);
+      return null;
     }
 
-    const counts = await Promise.all(promises);
+    // Defaults for Averages layer — filled in below from the cache matrix
+    dataPayload.overallAverage = 'N/A';
+    dataPayload.shiftAverage = 'N/A';
+    dataPayload.categoryAverage = 'N/A';
+    dataPayload.zoneAverage = 'N/A';
 
-    const dataPayload = {
-      overallRank: counts[0] !== null ? counts[0] + 1 : null,
-      overallTotal: counts[1],
-      shiftRank: counts[2] !== null ? counts[2] + 1 : null,
-      shiftTotal: counts[3],
-      categoryRank: counts[4] !== null ? counts[4] + 1 : null,
-      categoryTotal: counts[5],
-      genderRank: counts[6] !== null ? counts[6] + 1 : null,
-      genderTotal: counts[7],
-      zoneRank: null,
-      zoneTotal: null,
-      
-      // Defaults for Averages layer
-      overallAverage: 'N/A',
-      shiftAverage: 'N/A',
-      categoryAverage: 'N/A',
-      zoneAverage: 'N/A'
-    };
-
-    if (ctx.hasZone && zone) {
-      dataPayload.zoneRank = counts[8] !== null ? counts[8] + 1 : null;
-      dataPayload.zoneTotal = counts[9];
-    }
-
-    // 6. Direct single-row cache matrix pull for pre-calculated averages
+    // 2. Direct single-row cache matrix pull for pre-calculated averages
     try {
       const matrixRes = await fetch(`${CACHE_MATRIX_URL}?exam_id=eq.${encodeURIComponent(examId)}`, {
         method: 'GET',
@@ -139,16 +97,16 @@ const RSMRank = (() => {
 
       if (matrixRes.ok) {
         const matrixData = await matrixRes.json();
-        
+
         // Map elements by tracking context signatures
         matrixData.forEach(row => {
           if (row.shift_id === 'GLOBAL' && row.category === 'ALL' && row.zone === 'ALL') {
             dataPayload.overallAverage = row.average_score;
-          } else if (row.shift_id === shiftId) {
+          } else if (row.shift_id === ctx.shift) {
             dataPayload.shiftAverage = row.average_score;
-          } else if (row.shift_id === 'GLOBAL' && row.category === category) {
+          } else if (row.shift_id === 'GLOBAL' && row.category === ctx.category) {
             dataPayload.categoryAverage = row.average_score;
-          } else if (row.zone === zone) {
+          } else if (row.zone === ctx.zone) {
             dataPayload.zoneAverage = row.average_score;
           }
         });
@@ -276,4 +234,3 @@ const RSMRank = (() => {
 
   return { mount, percentile };
 })();
-
