@@ -525,6 +525,19 @@ const RSMUI = (() => {
     }
   }
 
+  // ── Official Answer Key print/save (merged, watermark-free, native print) ──
+  // Delegates the actual sanitize+merge work to official-print.js, which
+  // reads the SAME cardEl._rsmPdfData.parts stash as the PDF and Review
+  // Paper buttons above — no separate data source needed.
+  function openOfficialPrint(cardEl, meta) {
+    if (typeof RSMOfficialPrint === 'undefined') {
+      toast('Print module failed to load — refresh and try again');
+      return;
+    }
+    const result = RSMOfficialPrint.openOfficialPrint(cardEl, meta);
+    if (!result.ok) toast(result.message || 'Could not open the answer key');
+  }
+
   // ── Action buttons on the result card ──
   function attachResultActions(cardEl, ctx, meta) {
     if (!cardEl) return;
@@ -550,6 +563,9 @@ const RSMUI = (() => {
             break;
           case 'review-paper':
             openReviewPaper(cardEl, meta);
+            break;
+          case 'official-print':
+            openOfficialPrint(cardEl, meta);
             break;
           case 'attempt-mock':
             toast('Attempt as Mock — coming soon');
@@ -592,4 +608,5 @@ const RSMUI = (() => {
     isNativeApp
   };
 })();
+
 
