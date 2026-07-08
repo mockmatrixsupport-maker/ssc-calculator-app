@@ -248,34 +248,72 @@ const RSMScoreEngine = (() => {
       if (meta.uiCtx) RSMUI.enterResultMode(meta.uiCtx, meta.url);
     }
 
-    // ── Mount the rank section — fire-and-forget, exactly like
-    // submission.js's pattern. This runs on BOTH a fresh calculation
-    // AND a cache-loaded result (renderInto is the single shared path
-    // for both), since rank data has its own independent 10-min cache
-    // lifecycle regardless of how old the cached SCORE itself is.
-    // A slow/failed/missing rank.js can never delay or break the score
-    // display above it — wrapped in try/catch as extra insurance.
+    // ── Rank section: show the loading skeleton immediately (cosmetic,
+    // no network call yet) so the user sees progress right away.
+    //
+    // The ACTUAL data fetch is only auto-triggered here for a fromCache
+    // result — that result (and its DB row) was already submitted in a
+    // PAST run, so there's no race and it's safe to query immediately.
+    //
+    // For a FRESH calculation, run() below deliberately does NOT let
+    // this auto-fire — it calls RSMRank.mount() itself, only after
+    // RSMSubmission's own Supabase insert has settled. That's what
+    // eliminates the "1/0" race where the rank count query ran before
+    // this candidate's own row had actually committed.
     try {
       const rankSectionEl = cardEl && cardEl.querySelector('[data-rsm-rank-section]');
       if (rankSectionEl && typeof RSMRank !== 'undefined') {
-        // formFields (category/gender/zone) are cached separately by
-        // URL — same source submission.js already reads from — so the
-        // rank request can include them directly, letting get-rank
-        // skip an extra Submissions table read entirely.
-        const formFields = (typeof RSMCache !== 'undefined' && RSMCache.getFormFields && meta.url)
-          ? (RSMCache.getFormFields(meta.url) || {})
-          : {};
+        if (typeof RSMRank.showLoading === 'function') RSMRank.showLoading(rankSectionEl, hasZone);
+        if (meta.fromCache) {
+          RSMRank.mount(rankSectionEl, buildRankCtx(meta, info, hasZone));
+        }
+      }
+    } catch (e) { /* silent by design — rank display must never break the score card */ }
+  }
 
-        RSMRank.mount(rankSectionEl, {
-          examId: meta.examId || formFields.examId || (info.exam ? info.exam : null),
-          date: info.date || null,
-          shift: info.shift || null,
-          rollNo: info.rollNo || null,
-          category: formFields.category || null,
-          gender: formFields.gender || null,
-          zone: formFields.zone || null,
-          hasZone
-        });
+  /**
+   * Shared rank-context builder used by both renderInto() (cache-hit
+   * path) and run() (fresh-calculation path, called after submission
+   * settles). Kept in one place so both paths build the exact same
+   * shift key — submission.js's directSupabaseSubmit() must build this
+   * identically, or shift-tier rank will silently read back 0 total.
+   *
+   * shift is now `${date}_${shiftTime}` instead of just the raw time —
+   * a bare time range (e.g. "9:00 AM - 10:30 AM") collides across
+   * different exam dates within the same multi-day exam_id, merging
+   * unrelated shifts into one. Falls back to the raw shift value only
+   * if date is missing.
+   */
+  function buildRankCtx(meta, info, hasZone) {
+    const formFields = (typeof RSMCache !== 'undefined' && RSMCache.getFormFields && meta.url)
+      ? (RSMCache.getFormFields(meta.url) || {})
+      : {};
+    const shiftKey = (info.date && info.shift) ? `${info.date}_${info.shift}` : (info.shift || null);
+    return {
+      examId: meta.examId || formFields.examId || (info.exam ? info.exam : null),
+      date: info.date || null,
+      shift: shiftKey,
+      rollNo: info.rollNo || null,
+      category: formFields.category || null,
+      gender: formFields.gender || null,
+      zone: formFields.zone || null,
+      hasZone
+    };
+  }
+
+  /**
+   * Mounts (actually fetches) the rank section for a given rendered
+   * card. Split out from renderInto so run() can call it AFTER
+   * submission has settled, instead of racing it.
+   */
+  function mountRankSection(containerEl, result, meta) {
+    try {
+      const cardEl = containerEl.querySelector ? containerEl.querySelector('.result-card') : containerEl;
+      const rankSectionEl = cardEl && cardEl.querySelector('[data-rsm-rank-section]');
+      const info = result.candidateInfo || {};
+      const hasZone = meta.hasZone != null ? !!meta.hasZone : meta.family === 'rrb';
+      if (rankSectionEl && typeof RSMRank !== 'undefined') {
+        RSMRank.mount(rankSectionEl, buildRankCtx(meta, info, hasZone));
       }
     } catch (e) { /* silent by design — rank display must never break the score card */ }
   }
@@ -299,21 +337,35 @@ const RSMScoreEngine = (() => {
     }
 
     const result = calculate(parsed, correctMark, wrongMark);
+    // fromCache is deliberately absent/false here — renderInto shows the
+    // rank skeleton only, it will NOT auto-fetch (see renderInto above).
     renderInto(containerEl, result, { url: sourceUrl, family, uiCtx, parts });
 
-    // Fire-and-forget background submission to the backend, if/when one
-    // exists. This runs strictly AFTER the result is already rendered —
-    // it can never delay or block what the user sees. It is wrapped in
-    // try/catch so that even a missing or broken submission.js can never
-    // break scoring/rendering. submission.js itself is a silent no-op
-    // if no backend URL is configured, and queues+retries in the
-    // background (including when the app is reopened/foregrounded) if
-    // a URL is configured but the request fails.
+    const rankMeta = { url: sourceUrl, family };
+
+    // Submission still never blocks or delays the score card itself —
+    // that's already fully rendered above. What changed: the rank
+    // section's actual data fetch now waits for this candidate's own
+    // Supabase insert to SETTLE first (success OR failure), instead of
+    // firing at the same time. That's what eliminates the "1/0" race
+    // where the count query ran before this candidate's own row had
+    // actually committed.
+    //
+    // If the insert fails (network blip, RLS issue, etc.) rank still
+    // fetches afterwards — it just reflects the DB as it stood without
+    // this candidate's row, rather than hanging forever.
     try {
       if (typeof RSMSubmission !== 'undefined') {
-        RSMSubmission.submit(result, { url: sourceUrl, family });
+        Promise.resolve(RSMSubmission.submit(result, rankMeta))
+          .catch(() => false)
+          .then(() => mountRankSection(containerEl, result, rankMeta));
+      } else {
+        mountRankSection(containerEl, result, rankMeta);
       }
-    } catch (e) { /* silent by design — submission must never surface to the UI */ }
+    } catch (e) {
+      // Even if submission.js is missing/broken, rank must still show.
+      mountRankSection(containerEl, result, rankMeta);
+    }
 
     // Cache only now — fetch + successful calculation both happened.
     // No rank/normalised stripping needed here anymore — calculate()
@@ -326,7 +378,3 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
-
-
-
-
