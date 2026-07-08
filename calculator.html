@@ -639,7 +639,7 @@ function fillSelect(selectEl, options, opts = {}) {
         calcSecondsLeft--;
         if (calcSecondsLeft <= 0) {
           phase = 'slow';
-          fetchBtnText.textContent = 'Internet slow hai... calculate ho raha hai';
+          fetchBtnText.textContent = 'getting data...internet slow .';
           clearInterval(countdownInterval);
         } else {
           fetchBtnText.textContent = `Calculating score... (${calcSecondsLeft}s)`;
