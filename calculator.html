@@ -516,6 +516,35 @@ function fillSelect(selectEl, options, opts = {}) {
     setBtnState('idle');
   }
 
+  // Popup specifically on the URL box — used only for "wrong URL" style
+  // failures (SSC: part 1 itself never fetched / bad link format. RRB:
+  // 404 or non-200 response / page doesn't look like a real response
+  // sheet), flagged by the fetchers via err.invalidUrl.
+  function showUrlError(message) {
+    const urlInputEl = document.getElementById('examUrl');
+    const urlHintEl = document.getElementById('urlFieldHint');
+    urlInputEl.classList.add('input-error');
+    urlInputEl.style.borderColor = '#e53935';
+    if (urlHintEl) {
+      urlHintEl.textContent = message;
+      urlHintEl.style.color = '#e53935';
+    }
+    urlInputEl.focus();
+    setBtnState('idle');
+  }
+
+  // Clear the URL-box popup styling as soon as the user edits the URL again.
+  document.getElementById('examUrl').addEventListener('input', () => {
+    const urlInputEl = document.getElementById('examUrl');
+    const urlHintEl = document.getElementById('urlFieldHint');
+    urlInputEl.classList.remove('input-error');
+    urlInputEl.style.borderColor = '';
+    if (urlHintEl) {
+      urlHintEl.textContent = '';
+      urlHintEl.style.color = '';
+    }
+  });
+
   // ── UI context shared with RSMUI (edit bar / recent chips / result-mode) ──
   const RSM_CTX = {
     inputCard: document.getElementById('inputCard'),
@@ -711,6 +740,8 @@ function fillSelect(selectEl, options, opts = {}) {
       setBtnState('idle');
       if (timedOut || /45\+ sec/.test(e.message || '')) {
         showError('Fetch cancel ho gaya — connection bahut slow tha. Behtar internet ke saath dobara try karein.');
+      } else if (e.invalidUrl) {
+        showUrlError('URL is incorrect. Please enter correct URL.');
       } else {
         showError(e.message || 'Kuch galat ho gaya. Dobara koshish karein.');
       }
@@ -724,4 +755,5 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
+
 
