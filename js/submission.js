@@ -1,34 +1,16 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — submission.js
-   Silent, non-blocking background submission of a calculated
-   result to the backend (API Gateway → Lambda A).
-
-   DESIGN RULES (per spec):
-   • NEVER delays or blocks the on-screen result. score-engine.js
-     calls submit() strictly AFTER renderInto() has already run.
-   • If no backend URL is configured  → fully silent no-op.
-     No error, no console noise, nothing shown to the user.
-   • If a backend URL IS configured but the request fails
-     (offline, cold Lambda, throttled, whatever) → the payload is
-     queued locally (localStorage) and retried automatically:
-       - immediately after queuing (in case it was a one-off blip)
-       - every time the app becomes visible again (covers "app is
-         open in background" and "user reopens the app later")
-       - once on next script load (covers app cold-start with a
-         stale queue from a previous session)
-   • Family-agnostic — one file for both SSC and RRB, since
-     score-engine.js's calculate() output is already a unified
-     shape across both parsers. No per-exam-type submission files.
-   • Includes sourceUrl (the pasted answer-key link) for
-     traceability, de-duplication, and future re-fetch/re-verify.
+   RANK SCORE MASTER — submission.js (Dual Production Pipeline)
+   Silent, non-blocking background submission to BOTH:
+     1. AWS (API Gateway -> Lambda A) - Full Tracking Payload Warehouse
+     2. Supabase (Direct REST API HTTP) - Lightweight Live Rank Master Row
 ═══════════════════════════════════════════════════ */
 
 const RSMSubmission = (() => {
 
-  // ── Set this once your API Gateway endpoint exists.
-  // Leave it empty to fully disable submission — silent no-op,
-  // zero behavior change anywhere else in the app.
+  // ── BACKEND CORE ENDPOINTS CONFIGURATION
   const BACKEND_URL = 'https://hfpjk5onba.execute-api.ap-south-1.amazonaws.com/submit';
+  const SUPABASE_REST_URL = 'https://onqzgzngjteqopnzyscc.supabase.co/rest/v1/rank_master';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucXpnem5nanRlcW9wbnp5c2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjA0NjAsImV4cCI6MjA5OTA5NjQ2MH0.Pq74MzPgzS9VYiyUanjfj4D2A6OTfgGzqzdqbZ0SMiQ';
 
   const QUEUE_KEY = 'rsm_submission_queue_v1';
   const MAX_QUEUE_SIZE = 200;       // oldest items dropped first past this
@@ -62,13 +44,41 @@ const RSMSubmission = (() => {
   }
 
   /**
+   * Direct Browser to Supabase Database Table Upsert Layer
+   * Sends strictly required parameters over the optimized composite indexes.
+   */
+  async function directSupabaseSubmit(formFields, info, result) {
+    try {
+      const payload = {
+        exam_id: formFields.examId || null,
+        shift_id: info.shift || null,
+        roll_number: info.rollNo || null,
+        score: result.totalScore,
+        category: formFields.category || null,
+        gender: formFields.gender || null,
+        zone: formFields.zone || null  // Saves zone if present, automatically stores NULL if not
+      };
+
+      // Native HTTP POST directly hitting Supabase PostgREST Pooler
+      const res = await fetch(SUPABASE_REST_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Prefer': 'resolution=merge-duplicates' // Native PostgreSQL Upsert on conflict handler
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      return res.ok;
+    } catch (e) {
+      return false; // Silently falls back if network spikes
+    }
+  }
+
+  /**
    * Builds the backend payload from a score-engine result + context.
-   * Pulls form fields (category/state/zone/language/examId) from
-   * RSMCache since those are user-entered form values, not something
-   * the parser extracts from the answer-key page itself.
-   *
-   * @param {Object} result - output of RSMScoreEngine.calculate()
-   * @param {Object} meta - { url, family }
    */
   function buildPayload(result, meta) {
     const info = result.candidateInfo || {};
@@ -86,7 +96,7 @@ const RSMSubmission = (() => {
       skipped: s.skipped,
       bonus: s.bonus,
       score: s.score,
-      questions: s.questions || {} // { qId: status } — real IDs for RRB, placeholder keys for SSC until real IDs are found
+      questions: s.questions || {}
     }));
 
     return {
@@ -150,7 +160,7 @@ const RSMSubmission = (() => {
     const remaining = [];
 
     for (const item of items) {
-      if (item.attempts >= MAX_RETRIES_PER_ITEM) continue; // too stale, drop silently
+      if (item.attempts >= MAX_RETRIES_PER_ITEM) continue;
 
       const ok = await sendOne(item);
       if (!ok) {
@@ -164,42 +174,36 @@ const RSMSubmission = (() => {
   }
 
   /**
-   * Entry point — called by score-engine.js's run(), strictly AFTER
-   * the result has already been rendered to the screen. This function
-   * itself never awaits the network call before returning, so it can
-   * never delay anything the user sees.
-   *
-   * @param {Object} result - output of RSMScoreEngine.calculate()
-   * @param {Object} meta - { url, family }
+   * Unified Entry Point - Fired right after local score calculations are rendered
    */
   function submit(result, meta) {
-    if (!isEnabled()) return; // fully silent no-op, by design
+    if (!isEnabled()) return;
 
-    // If this exact answer-key URL was already sent to the backend
-    // (within the last 2 days — see cache.js's TTL), skip resubmitting.
-    // This covers the common case of a candidate reopening/recalculating
-    // the same link again, which would otherwise create a duplicate
-    // submission for the same roll number.
     if (typeof RSMCache !== 'undefined' && typeof RSMCache.isSubmitted === 'function' && meta.url) {
       if (RSMCache.isSubmitted(meta.url)) return;
     }
 
-    const payload = buildPayload(result, meta);
-    enqueue(payload);
-    flushQueue(); // fire-and-forget; failures just stay queued for retry
-
-    if (typeof RSMCache !== 'undefined' && typeof RSMCache.markSubmitted === 'function' && meta.url) {
-      RSMCache.markSubmitted(meta.url);
+    const info = result.candidateInfo || {};
+    let formFields = {};
+    if (typeof RSMCache !== 'undefined' && typeof RSMCache.getFormFields === 'function' && meta.url) {
+      formFields = RSMCache.getFormFields(meta.url) || {};
     }
+
+    // 1. Pipeline A: Direct lightweight upsert execution to Supabase Table (Async Fire-And-Forget)
+    directSupabaseSubmit(formFields, info, result).then((supabaseOk) => {
+      // If Supabase transaction completes 200, trigger duplicate prevention flag lock locally
+      if (supabaseOk && typeof RSMCache !== 'undefined' && typeof RSMCache.markSubmitted === 'function' && meta.url) {
+        RSMCache.markSubmitted(meta.url);
+      }
+    });
+
+    // 2. Pipeline B: Standard full payload tracking bundle processed through local AWS cache queue
+    const awsPayload = buildPayload(result, meta);
+    enqueue(awsPayload);
+    flushQueue();
   }
 
-  // ── Background retry triggers — all silent, all non-blocking:
-  //   1. visibilitychange → visible: covers the app being reopened
-  //      from background (exactly the "if app is open in background,
-  //      works to submitting" behavior requested).
-  //   2. A one-time delayed flush on script load: covers a queue left
-  //      over from a previous session (app was closed before it could
-  //      retry). Delayed so it never competes with initial page render.
+  // ── Automated invisible background synchronizers
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') flushQueue();
