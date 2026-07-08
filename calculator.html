@@ -639,18 +639,17 @@ function fillSelect(selectEl, options, opts = {}) {
         calcSecondsLeft--;
         if (calcSecondsLeft <= 0) {
           phase = 'slow';
-          fetchBtnText.textContent = 'Internet bahut slow hai... calculate ho raha hai';
+          fetchBtnText.textContent = 'Internet slow hai... calculate ho raha hai';
           clearInterval(countdownInterval);
         } else {
           fetchBtnText.textContent = `Calculating score... (${calcSecondsLeft}s)`;
         }
       }
     }, 1000);
-    
 
     const hardTimeout = setTimeout(() => {
       timedOut = true;
-    }, 45000);
+    }, 120000);
 
     function clearProgressTimers() {
       clearInterval(countdownInterval);
@@ -658,7 +657,7 @@ function fillSelect(selectEl, options, opts = {}) {
     }
 
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Fetch mein bahut zyada time lag raha hai (45+ sec). Kripya behtar internet connection ke saath dobara koshish karein.')), 45000);
+      setTimeout(() => reject(new Error('Internet slow try again')), 120000);
     });
 
     try {
