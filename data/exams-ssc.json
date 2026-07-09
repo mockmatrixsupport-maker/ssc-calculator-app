@@ -1,12 +1,12 @@
 [
   { "id": "ssc-cgl-tier1",     "title": "SSC CGL — Tier I",              "correct": 2, "wrong": 0.5, "parts": 4 },
-  { "id": "ssc-cgl-tier2",     "title": "SSC CGL — Tier II",             "correct": 3, "wrong": 1,   "parts": 3 },
+  { "id": "ssc-cgl-tier2",     "title": "SSC CGL — Tier II",             "correct": 3, "wrong": 1,   "parts": 3, "qualifying": [3] },
   { "id": "ssc-chsl-tier1",    "title": "SSC CHSL — Tier I",             "correct": 2, "wrong": 0.5, "parts": 4 },
-  { "id": "ssc-chsl-tier2",    "title": "SSC CHSL — Tier II",            "correct": 3, "wrong": 1,   "parts": 1 },
+  { "id": "ssc-chsl-tier2",    "title": "SSC CHSL — Tier II",            "correct": 3, "wrong": 1,   "parts": 1, "qualifying": [2] },
   { "id": "ssc-cpo-tier1",     "title": "SSC CPO — Paper I",             "correct": 1, "wrong": 0.25, "parts": 4 },
   { "id": "ssc-cpo-tier2",     "title": "SSC CPO — Paper II",            "correct": 1, "wrong": 0.25, "parts": 1 },
   { "id": "ssc-gd",            "title": "SSC GD Constable",              "correct": 2, "wrong": 0.25, "parts": 4 },
-  { "id": "ssc-mts",           "title": "SSC MTS / Havaldar",            "correct": 1, "wrong": 0.25, "parts": 4 },
+  { "id": "ssc-mts",           "title": "SSC MTS / Havaldar",            "correct": 1, "wrong": 0.25, "parts": 4, "qualifying": [4] },
   { "id": "ssc-je",            "title": "SSC JE",                        "correct": 1, "wrong": 0.25, "parts": 3 },
   { "id": "ssc-steno",         "title": "SSC Stenographer (Gr. C & D)",  "correct": 1, "wrong": 0.25, "parts": 3 },
   { "id": "ssc-selection-post","title": "SSC Selection Post",            "correct": 1, "wrong": 0.25, "parts": 4 },
@@ -16,4 +16,5 @@
   { "id": "delhi-police-driver", "title": "Delhi Police Driver",         "correct": 1, "wrong": 0.25, "parts": 5 },
   { "id": "delhi-police-constable-exe", "title": "Delhi Police Constable (Executive)", "correct": 1, "wrong": 0.25, "parts": 4 }
 ]
+
 
