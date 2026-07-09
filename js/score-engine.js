@@ -55,13 +55,25 @@ const RSMScoreEngine = (() => {
     ));
   }
 
-  function calculate(parsed, correctMark, wrongMark) {
+  /**
+   * @param {number[]} [qualifying] - 1-based section indices that are
+   *   "qualifying" for this exam (e.g. [3], [1,2]). Qualifying sections
+   *   are still scored and shown individually like any other section —
+   *   they're just EXCLUDED from totalScore/totalQ/maxScore/pct, which
+   *   are what rank.js and Supabase treat as "the" score for ranking.
+   *   Their own sum is returned separately as qualifyingTotal (etc.)
+   *   only when the array is non-empty, so exams with no qualifying
+   *   section see zero change in the result shape.
+   */
+  function calculate(parsed, correctMark, wrongMark, qualifying = []) {
     let totalCorrect = 0, totalWrong = 0, totalSkipped = 0, totalBonus = 0, totalQ = 0;
+    let qCorrect = 0, qWrong = 0, qSkipped = 0, qBonus = 0, qQ = 0;
     const sectionResults = [];
 
     parsed.sections.forEach((sec, secIdx) => {
       let c = 0, w = 0, s = 0, b = 0;
       const questionMap = {};
+      const isQualifying = qualifying.includes(secIdx + 1);
 
       sec.questions.forEach(q => {
         if (q.status === 'correct') c++;
@@ -81,16 +93,23 @@ const RSMScoreEngine = (() => {
 
       const total = sec.questions.length;
       const score = (c * correctMark) - (w * wrongMark) + (b * correctMark);
-      sectionResults.push({ name: sec.name, total, correct: c, wrong: w, skipped: s, bonus: b, score, questions: questionMap });
+      sectionResults.push({ name: sec.name, total, correct: c, wrong: w, skipped: s, bonus: b, score, isQualifying, questions: questionMap });
 
-      totalCorrect += c; totalWrong += w; totalSkipped += s; totalBonus += b; totalQ += total;
+      if (isQualifying) {
+        qCorrect += c; qWrong += w; qSkipped += s; qBonus += b; qQ += total;
+      } else {
+        totalCorrect += c; totalWrong += w; totalSkipped += s; totalBonus += b; totalQ += total;
+      }
     });
 
+    // totalScore/totalQ/maxScore/pct below are the NON-qualifying sums —
+    // this is what rank.js and Supabase's `score` column use for rank,
+    // so qualifying-section marks must never leak into them.
     const totalScore = (totalCorrect * correctMark) - (totalWrong * wrongMark) + (totalBonus * correctMark);
     const maxScore = totalQ * correctMark;
     const pct = maxScore > 0 ? ((totalScore / maxScore) * 100).toFixed(2) : '0.00';
 
-    return {
+    const result = {
       candidateInfo: parsed.candidateInfo,
       sections: sectionResults,
       totalCorrect, totalWrong, totalSkipped, totalBonus, totalQ,
@@ -104,6 +123,22 @@ const RSMScoreEngine = (() => {
       // above is already rendered, so a slow/failed rank fetch can
       // never delay or block the score itself.
     };
+
+    // Only present at all when this exam actually has a qualifying
+    // section — keeps the result shape identical to before for every
+    // exam that doesn't, so nothing downstream needs a null-check.
+    if (qualifying.length > 0) {
+      const qualifyingScore = (qCorrect * correctMark) - (qWrong * wrongMark) + (qBonus * correctMark);
+      result.qualifyingCorrect = qCorrect;
+      result.qualifyingWrong = qWrong;
+      result.qualifyingSkipped = qSkipped;
+      result.qualifyingBonus = qBonus;
+      result.qualifyingQ = qQ;
+      result.qualifyingTotal = Number(qualifyingScore.toFixed(2));
+      result.qualifyingMax = Number((qQ * correctMark).toFixed(2));
+    }
+
+    return result;
   }
 
   // ── Candidate detail rows, in display order, only if present ──
@@ -131,6 +166,7 @@ const RSMScoreEngine = (() => {
 
   function buildMarksTable(r) {
     const hasBonus = r.totalBonus > 0;
+    const hasQualifying = r.sections.some(s => s.isQualifying);
     const headerCells = [
       '<th class="mt-col-section">Section</th>',
       '<th>Total</th>',
@@ -142,9 +178,10 @@ const RSMScoreEngine = (() => {
 
     const bodyRows = r.sections.map(s => {
       const short = shortSectionName(s.name);
+      const qSuffix = s.isQualifying ? ' <span class="mt-qualifying-tag">Q</span>' : '';
       const sectionCell = short
-        ? `<td class="mt-col-section" title="${esc(s.name)}">${esc(short)}</td>`
-        : `<td class="mt-col-section mt-col-section--scroll"><span class="mt-section-scroll" title="${esc(s.name)}">${esc(s.name)}</span></td>`;
+        ? `<td class="mt-col-section" title="${esc(s.name)}">${esc(short)}${qSuffix}</td>`
+        : `<td class="mt-col-section mt-col-section--scroll"><span class="mt-section-scroll" title="${esc(s.name)}">${esc(s.name)}</span>${qSuffix}</td>`;
       return `
       <tr>
         ${sectionCell}
@@ -156,7 +193,37 @@ const RSMScoreEngine = (() => {
       </tr>`;
     }).join('');
 
-    const overallRow = `
+    // Exams with no qualifying section: unchanged, single "Overall" row.
+    // Exams with one: two rows — the first (used for rank/average) is
+    // the non-qualifying total; the second adds the qualifying marks
+    // back in for a true grand total, purely informational.
+    let overallRows;
+    if (hasQualifying) {
+      const allQ = r.totalQ + r.qualifyingQ;
+      const allCorrect = r.totalCorrect + r.qualifyingCorrect;
+      const allWrong = r.totalWrong + r.qualifyingWrong;
+      const allBonus = r.totalBonus + r.qualifyingBonus;
+      const allScore = Number((r.totalScore + r.qualifyingTotal).toFixed(2));
+
+      overallRows = `
+      <tr class="mt-overall">
+        <td class="mt-col-section">Total (for Rank)</td>
+        <td>${r.totalQ}</td>
+        <td class="mt-pass">${r.totalCorrect}</td>
+        <td class="mt-fail">${r.totalWrong}</td>
+        ${hasBonus ? `<td class="mt-bonus">${r.totalBonus}</td>` : ''}
+        <td class="mt-score">${r.totalScore}</td>
+      </tr>
+      <tr class="mt-overall mt-overall--all">
+        <td class="mt-col-section">Total (All Sections)</td>
+        <td>${allQ}</td>
+        <td class="mt-pass">${allCorrect}</td>
+        <td class="mt-fail">${allWrong}</td>
+        ${hasBonus ? `<td class="mt-bonus">${allBonus}</td>` : ''}
+        <td class="mt-score">${allScore}</td>
+      </tr>`;
+    } else {
+      overallRows = `
       <tr class="mt-overall">
         <td class="mt-col-section">Overall</td>
         <td>${r.totalQ}</td>
@@ -165,14 +232,20 @@ const RSMScoreEngine = (() => {
         ${hasBonus ? `<td class="mt-bonus">${r.totalBonus}</td>` : ''}
         <td class="mt-score">${r.totalScore}</td>
       </tr>`;
+    }
+
+    const footnote = hasQualifying
+      ? '<div class="mt-qualifying-note">Q = Qualifying section — not counted in the rank total.</div>'
+      : '';
 
     return `
       <div class="table-scroll">
         <table class="marks-table">
           <thead><tr>${headerCells}</tr></thead>
-          <tbody>${bodyRows}${overallRow}</tbody>
+          <tbody>${bodyRows}${overallRows}</tbody>
         </table>
-      </div>`;
+      </div>
+      ${footnote}`;
   }
 
   const ICONS = {
@@ -327,8 +400,11 @@ const RSMScoreEngine = (() => {
    * @param {HTMLElement} containerEl - where to render the result card
    * @param {string} sourceUrl - original URL, used as the cache key
    * @param {Object} [uiCtx] - passed through to renderInto's meta.uiCtx
+   * @param {number[]} [qualifying] - 1-based qualifying section indices
+   *   for this exam, from the exam's config entry. Omit/leave empty for
+   *   exams with no qualifying section (the vast majority).
    */
-  function run(family, parts, correctMark, wrongMark, containerEl, sourceUrl, uiCtx) {
+  function run(family, parts, correctMark, wrongMark, containerEl, sourceUrl, uiCtx, qualifying = []) {
     const parser = family === 'rrb' ? RSMParserRRB : RSMParserSSC;
     const parsed = parser.parse(parts);
 
@@ -336,7 +412,7 @@ const RSMScoreEngine = (() => {
       throw new Error('Answer key parse nahi ho payi. Page format pehchana nahi gaya.');
     }
 
-    const result = calculate(parsed, correctMark, wrongMark);
+    const result = calculate(parsed, correctMark, wrongMark, qualifying);
     // fromCache is deliberately absent/false here — renderInto shows the
     // rank skeleton only, it will NOT auto-fetch (see renderInto above).
     renderInto(containerEl, result, { url: sourceUrl, family, uiCtx, parts });
@@ -378,3 +454,4 @@ const RSMScoreEngine = (() => {
 
   return { calculate, renderInto, run, shortSectionName };
 })();
+
