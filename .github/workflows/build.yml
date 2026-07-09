@@ -42,6 +42,76 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      # ── NEW STEP: Custom MainActivity.java ─────────────────────────
+      # Stock Capacitor generates an EMPTY MainActivity (just extends
+      # BridgeActivity, no overrides at all). That's why:
+      #   1. Back button doesn't reliably exit on Android 13-15 — no
+      #      OnBackPressedCallback is registered, so predictive-back
+      #      dispatch has nothing to fall through to.
+      #   2. Reopening the app never resumes the last page — nothing
+      #      calls webView.saveState()/restoreState() on its own.
+      # This overwrites that generated file with one that fixes both,
+      # using the modern OnBackPressedDispatcher API (required for
+      # correct behavior under Android 15's predictive-back gesture,
+      # unlike the older onBackPressed() override approach).
+      - name: Write custom MainActivity.java (back button + resume-last-page fix)
+        run: |
+          PKG_PATH=$(echo "com.rankscoremaster.app" | tr '.' '/')
+          MAIN_ACTIVITY_DIR="android/app/src/main/java/$PKG_PATH"
+          mkdir -p "$MAIN_ACTIVITY_DIR"
+          cat > "$MAIN_ACTIVITY_DIR/MainActivity.java" << 'EOF'
+          package com.rankscoremaster.app;
+
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import androidx.activity.OnBackPressedCallback;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  // Modern back-gesture API — required for correct behavior
+                  // on Android 13-15 with predictive back enabled. Falls
+                  // through to app exit only when the WebView has nowhere
+                  // left to go back to.
+                  getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+                      @Override
+                      public void handleOnBackPressed() {
+                          WebView webView = getBridge().getWebView();
+                          if (webView != null && webView.canGoBack()) {
+                              webView.goBack();
+                          } else {
+                              setEnabled(false);
+                              getOnBackPressedDispatcher().onBackPressed();
+                          }
+                      }
+                  });
+              }
+
+              @Override
+              protected void onSaveInstanceState(Bundle outState) {
+                  super.onSaveInstanceState(outState);
+                  WebView webView = getBridge().getWebView();
+                  if (webView != null) {
+                      webView.saveState(outState);
+                  }
+              }
+
+              @Override
+              protected void onRestoreInstanceState(Bundle savedInstanceState) {
+                  super.onRestoreInstanceState(savedInstanceState);
+                  WebView webView = getBridge().getWebView();
+                  if (webView != null) {
+                      webView.restoreState(savedInstanceState);
+                  }
+              }
+          }
+          EOF
+          echo "Wrote custom MainActivity.java to $MAIN_ACTIVITY_DIR"
+
       # ── Firebase Cloud Messaging config ──────────────────────────
       - name: Decode google-services.json into android/app/
         run: |
@@ -76,6 +146,17 @@ jobs:
         run: |
           sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml || true
           grep -q 'usesCleartextTraffic' android/app/src/main/AndroidManifest.xml || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+
+      # ── NEW STEP: Enable predictive-back callback support ──────────
+      # Required on Android 13+, and specifically what your Android 15
+      # phone needs to receive back-press events reliably through the
+      # OnBackPressedDispatcher registered in MainActivity.java above.
+      # Without this, the system can silently swallow back-press events
+      # instead of routing them to the app at all.
+      - name: Enable OnBackInvokedCallback in manifest
+        run: |
+          grep -q 'android:enableOnBackInvokedCallback' android/app/src/main/AndroidManifest.xml || \
+          sed -i 's/<application/<application android:enableOnBackInvokedCallback="true"/' android/app/src/main/AndroidManifest.xml
 
       # ── NEW STEP: INJECTS PERMISSIONS DYNAMICALLY ─────────────────
       - name: Add Storage, Media, and Notification Permissions
