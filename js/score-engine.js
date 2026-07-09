@@ -28,7 +28,7 @@ const RSMScoreEngine = (() => {
   // broken initials-acronym (the old word-splitting logic produced
   // garbage like "P(I" for exactly that kind of name).
   const SECTION_KEYWORD_RULES = [
-    { keys: ['quant', 'math', 'Numerical'], label: 'Maths' },
+    { keys: ['quant', 'math', 'numerical'], label: 'Maths' },
     { keys: ['intelligence', 'reasoning', 'mental ability'], label: 'Reasoning' },
     { keys: ['general knowledge', 'general awareness', 'general science'], label: 'GK & GS' },
     { keys: ['computer'], label: 'Computer' },
@@ -178,7 +178,7 @@ const RSMScoreEngine = (() => {
 
     const bodyRows = r.sections.map(s => {
       const short = shortSectionName(s.name);
-      const qSuffix = s.isQualifying ? ' <span class="mt-qualifying-tag">Q</span>' : '';
+      const qSuffix = s.isQualifying ? ' <span style="color:#e11d48;font-weight:700;font-size:1.05em;">(Q)</span>' : '';
       const sectionCell = short
         ? `<td class="mt-col-section" title="${esc(s.name)}">${esc(short)}${qSuffix}</td>`
         : `<td class="mt-col-section mt-col-section--scroll"><span class="mt-section-scroll" title="${esc(s.name)}">${esc(s.name)}</span>${qSuffix}</td>`;
