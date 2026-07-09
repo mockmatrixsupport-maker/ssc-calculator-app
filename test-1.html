@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Attempt as Mock Test — Rank Score Master">
+<meta name="theme-color" content="#0f766e">
+<title>Mock Test — Rank Score Master</title>
+<link rel="icon" href="logo.jpg">
+<!-- Reuses review.css's design tokens (:root vars) + a few of its
+     component classes (rq-img-inline, pass/fail/skip) so this page
+     matches Review Paper's look without redefining the palette. -->
+<link rel="stylesheet" href="css/review.css?v=1">
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  chtml: {
+    mtextInheritFont: true,
+    displayAlign: 'left',
+    linebreaks: { allow: true, width: 'container', overflow: 'linebreak' }
+  },
+  options: { skipHtmlTags: ['script', 'style', 'textarea', 'pre'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+
+<style>
+/* ── test.html-only additions on top of review.css's tokens ── */
+.test-loading, .test-error {
+  text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--text-muted);
+}
+.test-error { color: var(--fail); }
+
+/* Welcome screen */
+.test-welcome { max-width: 480px; margin: 0 auto; padding: var(--sp-6) var(--sp-4); }
+.test-welcome__card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--sp-6); margin-top: var(--sp-5);
+}
+.test-welcome h1 { font-size: 1.15rem; margin: 0 0 var(--sp-3); color: var(--text-primary); }
+.test-welcome-row { font-size: 0.85rem; color: var(--text-secondary); padding: var(--sp-2) 0; border-bottom: 1px dashed var(--border); }
+.test-welcome-row:last-child { border-bottom: none; }
+.test-mark-pos { color: var(--pass); font-weight: 700; }
+.test-mark-neg { color: var(--fail); font-weight: 700; }
+.test-marking-warn { background: var(--fail-bg); color: var(--fail); font-size: 0.74rem; padding: var(--sp-3); border-radius: var(--r-md); margin-bottom: var(--sp-3); line-height: 1.4; }
+.test-field { margin-top: var(--sp-4); }
+.test-field label { display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: var(--sp-1); }
+.test-field input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--r-md);
+  border: 1.5px solid var(--border-strong); background: var(--bg-input); color: var(--text-primary);
+  font-size: 0.88rem; font-family: inherit;
+}
+.test-start-btn {
+  width: 100%; margin-top: var(--sp-5); padding: 13px; border: none; border-radius: var(--r-md);
+  background: var(--ink); color: #fff; font-size: 0.92rem; font-weight: 700; cursor: pointer;
+}
+.test-start-btn:active { background: var(--ink-deep); }
+.test-welcome-hint { font-size: 0.72rem; color: var(--text-muted); text-align: center; margin-top: var(--sp-3); }
+
+/* Top bar + timer (mirrors review-topbar layout) */
+.test-topbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); background: var(--bg-card); border-bottom: 1px solid var(--border);
+}
+.test-topbar__title { flex: 1; min-width: 0; }
+.test-topbar__title h1 { font-size: 0.92rem; margin: 0; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.test-topbar__title span { font-size: 0.68rem; color: var(--text-muted); }
+.test-exit-btn {
+  border: none; background: var(--bg-input); color: var(--text-secondary); width: 34px; height: 34px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+}
+.test-exit-btn svg { width: 17px; height: 17px; }
+.test-timer {
+  font-family: var(--font-mono); font-weight: 700; font-size: 0.95rem; padding: 6px 12px;
+  border-radius: var(--r-md); background: var(--bg-input); color: var(--text-primary); flex-shrink: 0;
+}
+.test-timer--low { background: var(--fail-bg); color: var(--fail); }
+
+/* Section pill bar */
+.test-sectionbar { display: flex; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); overflow-x: auto; background: var(--bg-page); }
+.test-sec-pill {
+  flex-shrink: 0; font-size: 0.68rem; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+  background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border);
+}
+.test-sec-pill.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* Question card */
+.test-question-wrap { padding: var(--sp-4); padding-bottom: 140px; max-width: 640px; margin: 0 auto; }
+.test-q-counter { font-size: 0.72rem; color: var(--text-muted); margin-bottom: var(--sp-2); }
+.test-q-status-badge {
+  display: inline-block; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; margin-bottom: var(--sp-3);
+}
+.test-q-status-badge.answered { background: var(--pass-bg); color: var(--pass); }
+.test-q-status-badge.marked { background: var(--bonus-bg); color: var(--bonus); }
+.test-q-status-badge.answered-marked { background: var(--bonus-bg); color: var(--bonus); }
+.test-q-status-badge.not-answered { background: var(--fail-bg); color: var(--fail); }
+.test-q-text { font-size: 0.92rem; line-height: 1.55; color: var(--text-primary); word-wrap: break-word; overflow-x: auto; margin-bottom: var(--sp-4); }
+.test-q-text .rq-img-inline, .test-option .rq-img-inline { display: block; max-width: 100%; border-radius: 6px; margin: 6px 0; }
+
+.test-options { display: flex; flex-direction: column; gap: var(--sp-2); }
+.test-option {
+  display: flex; align-items: flex-start; gap: var(--sp-3); width: 100%; text-align: left;
+  padding: var(--sp-3); border-radius: var(--r-md); border: 1.5px solid var(--border);
+  background: var(--bg-input); font-size: 0.86rem; line-height: 1.5; cursor: pointer; font-family: inherit; color: var(--text-primary);
+}
+.test-option.selected { border-color: var(--ink); background: var(--pass-bg); }
+.test-option__label {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 0.74rem; font-weight: 700; background: var(--bg-card);
+  border: 1.5px solid var(--border-strong); color: var(--text-secondary);
+}
+.test-option.selected .test-option__label { background: var(--ink); border-color: var(--ink); color: #fff; }
+.test-option__text { flex: 1; min-width: 0; word-wrap: break-word; overflow-x: auto; }
+
+/* Bottom action bar — 4 buttons: Clear / Mark / Prev / Save&Next (the
+   "two more than review" the person asked for: Clear + Mark). */
+.test-bottombar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg-card);
+  border-top: 1px solid var(--border); padding: var(--sp-2) var(--sp-3);
+  padding-bottom: calc(var(--sp-2) + env(safe-area-inset-bottom));
+}
+.test-bottombar__row1 { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.test-bottombar__row2 { display: flex; gap: var(--sp-2); }
+.test-btn {
+  flex: 1; padding: 10px 6px; border-radius: var(--r-md); border: 1.5px solid var(--border-strong);
+  background: var(--bg-input); color: var(--text-primary); font-size: 0.76rem; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.test-btn--primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.test-btn--ghost { background: transparent; }
+.test-btn:disabled { opacity: 0.4; }
+.test-submit-section-row { padding: 0 var(--sp-3) var(--sp-2); }
+.test-submit-section-row button { width: 100%; }
+
+/* Floating palette toggle (mirrors review-fab) */
+.test-fab {
+  position: fixed; right: var(--sp-4); bottom: 96px; z-index: 21; width: 50px; height: 50px;
+  border-radius: 50%; background: var(--ink); color: #fff; border: none; display: flex;
+  align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.25); cursor: pointer;
+}
+.test-fab svg { width: 20px; height: 20px; }
+
+.test-palette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 29; opacity: 0; pointer-events: none; transition: opacity var(--dur) var(--ease); }
+.test-palette-backdrop.open { opacity: 1; pointer-events: auto; }
+.test-palette {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(320px, 86vw); z-index: 30;
+  background: var(--bg-card); transform: translateX(100%); transition: transform var(--dur) var(--ease);
+  display: flex; flex-direction: column; padding: var(--sp-4); overflow-y: auto;
+}
+.test-palette.open { transform: translateX(0); }
+.test-palette__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-3); font-weight: 700; font-size: 0.9rem; }
+.test-palette__close { border: none; background: none; color: var(--text-muted); cursor: pointer; }
+.test-palette__legend { display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: 0.64rem; color: var(--text-muted); margin-bottom: var(--sp-4); }
+.test-palette__legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
+.test-palette__group-label { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); margin: var(--sp-3) 0 var(--sp-2); }
+.test-palette__grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-2); }
+.test-palette__btn {
+  aspect-ratio: 1; border-radius: var(--r-sm); border: 1.5px solid var(--border-strong); background: var(--bg-input);
+  font-size: 0.72rem; font-weight: 700; cursor: pointer; color: var(--text-secondary);
+}
+.test-palette__btn.answered { background: var(--pass-bg); border-color: var(--pass); color: var(--pass); }
+.test-palette__btn.marked, .test-palette__btn.answered-marked { background: var(--bonus-bg); border-color: var(--bonus); color: var(--bonus); }
+.test-palette__btn.not-answered { background: var(--fail-bg); border-color: var(--fail); color: var(--fail); }
+.test-palette__btn.current { outline: 2px solid var(--ink); }
+.test-palette__btn[disabled] { opacity: 0.35; cursor: not-allowed; }
+.test-palette__submit { margin-top: var(--sp-4); width: 100%; padding: 12px; border: none; border-radius: var(--r-md); background: var(--fail); color: #fff; font-weight: 700; cursor: pointer; }
+
+/* Local score summary (no rank/percentile) */
+.test-summary { max-width: 480px; margin: 0 auto; padding: var(--sp-6) var(--sp-4); }
+.test-summary-note { background: var(--bonus-bg); color: var(--bonus); font-size: 0.78rem; padding: var(--sp-3); border-radius: var(--r-md); margin-bottom: var(--sp-4); }
+.test-summary-note--warn { background: var(--fail-bg); color: var(--fail); }
+.test-summary-score { text-align: center; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-6); }
+.test-summary-score__num { font-size: 2rem; font-weight: 800; color: var(--text-primary); }
+.test-summary-score__num span { font-size: 1rem; font-weight: 500; color: var(--text-muted); }
+.test-summary-score__pct { font-size: 0.85rem; color: var(--text-muted); margin-top: var(--sp-2); }
+.test-summary-stats { display: flex; justify-content: space-around; margin: var(--sp-4) 0; }
+.test-summary-stats div { text-align: center; }
+.test-summary-stats b { display: block; font-size: 1.3rem; }
+.test-summary-stats b.pass { color: var(--pass); } .test-summary-stats b.fail { color: var(--fail); } .test-summary-stats b.skip { color: var(--skip); }
+.test-summary-stats span { font-size: 0.68rem; color: var(--text-muted); }
+.test-summary-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; margin-top: var(--sp-3); }
+.test-summary-table th, .test-summary-table td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
+.test-summary-table th:first-child, .test-summary-table td:first-child { text-align: left; }
+.test-summary-disclaimer { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-top: var(--sp-4); }
+.test-summary-actions { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-5); }
+.test-summary-actions button { padding: 12px; border-radius: var(--r-md); font-weight: 700; font-size: 0.86rem; cursor: pointer; font-family: inherit; }
+.test-summary-actions .test-btn--primary { border: none; }
+.test-summary-actions .test-btn--ghost { background: transparent; border: 1.5px solid var(--border-strong); color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<div class="test-loading" id="testLoading">Preparing your mock test…</div>
+<div class="test-error hidden" id="testError">
+  This mock-test session has expired or wasn't found.<br>
+  Please go back and tap <b>Attempt as Mock</b> again from your result.
+</div>
+
+<!-- ── Welcome screen ── -->
+<div class="test-welcome hidden" id="testWelcome">
+  <div class="test-welcome__card">
+    <h1 id="welcomeTitle">Mock Test</h1>
+    <div id="welcomeMeta"></div>
+    <div class="test-field">
+      <label for="candidateNameInput">Your name (optional)</label>
+      <input type="text" id="candidateNameInput" placeholder="e.g. Vivek Kumar" autocomplete="off">
+    </div>
+    <div class="test-field">
+      <label for="candidateRollInput">Roll number (optional)</label>
+      <input type="text" id="candidateRollInput" placeholder="For your own reference" autocomplete="off">
+    </div>
+    <button type="button" class="test-start-btn" id="startTestBtn">Start Test</button>
+    <div class="test-welcome-hint">Once started, the timer cannot be paused.</div>
+  </div>
+</div>
+
+<!-- ── Attempt screen ── -->
+<div class="test-root hidden" id="testRoot">
+  <div class="test-topbar">
+    <button type="button" class="test-exit-btn" id="testExitBtn" aria-label="Exit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="test-topbar__title">
+      <h1 id="testTopTitle">Mock Test</h1>
+      <span id="testTopSub"></span>
+    </div>
+    <div class="test-timer" id="testTimer">00:00</div>
+  </div>
+
+  <div class="test-sectionbar" id="testSectionbar"></div>
+
+  <div class="test-question-wrap">
+    <div class="test-q-counter" id="testQCounter"></div>
+    <span class="test-q-status-badge" id="testQStatusBadge"></span>
+    <div class="test-q-text" id="testQText"></div>
+    <div class="test-options" id="testOptions"></div>
+  </div>
+
+  <div class="test-submit-section-row">
+    <button type="button" class="test-btn" id="testSubmitSectionBtn" style="display:none;">Submit Section &amp; Continue →</button>
+  </div>
+
+  <div class="test-bottombar">
+    <div class="test-bottombar__row1">
+      <button type="button" class="test-btn test-btn--ghost" id="testClearBtn">Clear Response</button>
+      <button type="button" class="test-btn test-btn--ghost" id="testMarkBtn">Mark for Review</button>
+    </div>
+    <div class="test-bottombar__row2">
+      <button type="button" class="test-btn" id="testPrevBtn">Previous</button>
+      <button type="button" class="test-btn test-btn--primary" id="testNextBtn">Save &amp; Next</button>
+    </div>
+  </div>
+
+  <button type="button" class="test-fab" id="testPaletteBtn" aria-label="Question palette">
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="4" cy="6" r="1.6" fill="currentColor"/><line x1="8" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+      <circle cx="4" cy="12" r="1.6" fill="currentColor"/><line x1="8" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+      <circle cx="4" cy="18" r="1.6" fill="currentColor"/><line x1="8" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <div class="test-palette-backdrop" id="testPaletteBackdrop"></div>
+  <div class="test-palette" id="testPalette">
+    <div class="test-palette__head">
+      <span>Questions</span>
+      <button type="button" class="test-palette__close" id="testPaletteClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="test-palette__legend">
+      <span><i style="background:var(--pass)"></i>Answered</span>
+      <span><i style="background:var(--fail)"></i>Not answered</span>
+      <span><i style="background:var(--bonus)"></i>Marked</span>
+      <span><i style="background:var(--border-strong)"></i>Not visited</span>
+    </div>
+    <div id="testPaletteGrid"></div>
+    <button type="button" class="test-palette__submit" id="testPaletteSubmitBtn">Submit Test</button>
+  </div>
+</div>
+
+<!-- ── Local score summary (no rank/percentile) ── -->
+<div class="test-summary hidden" id="testSummary">
+  <div id="testSummaryBody"></div>
+  <div class="test-summary-actions">
+    <button type="button" class="test-btn test-btn--primary" id="testViewSolutionsBtn">View Detailed Solutions</button>
+    <button type="button" class="test-btn test-btn--ghost" id="testBackHomeBtn">Back to Home</button>
+  </div>
+</div>
+
+<script src="js/remote-loader.js?v=1"></script>
+<script>
+  RSMLoader.loadScripts([
+    { path: 'js/test.js', local: 'js/test.js?v=1' }
+  ]);
+</script>
+<script>
+(function () {
+  try {
+    const t = localStorage.getItem('rsm-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
