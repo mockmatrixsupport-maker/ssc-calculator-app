@@ -177,7 +177,13 @@ html.desktop-mode .container { max-width: 1100px; margin: 0 auto; }
   border-bottom: 1px solid var(--rule);
   color: var(--text-primary);
 }
-.marks-table .mt-col-section { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.marks-table tr.mt-overall .mt-col-section {
+  max-width: 110px;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  line-height: 1.2;
+}
 /* Unmatched section names (no keyword hit) show the FULL name instead
    of a garbled acronym — since that can be long, this cell gets its
    own independent horizontal scroll rather than being clipped. */
