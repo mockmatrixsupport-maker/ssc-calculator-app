@@ -50,10 +50,10 @@ jobs:
       #      dispatch has nothing to fall through to.
       #   2. Reopening the app never resumes the last page — nothing
       #      calls webView.saveState()/restoreState() on its own.
-      # This overwrites that generated file with one that fixes both,
-      # using the modern OnBackPressedDispatcher API (required for
-      # correct behavior under Android 15's predictive-back gesture,
-      # unlike the older onBackPressed() override approach).
+      # This overwrites that generated file with one that fixes both.
+      # onSaveInstanceState/onRestoreInstanceState MUST be public here —
+      # BridgeActivity declares them public, and Java forbids an override
+      # from weakening access to protected (this caused the build failure).
       - name: Write custom MainActivity.java (back button + resume-last-page fix)
         run: |
           PKG_PATH=$(echo "com.rankscoremaster.app" | tr '.' '/')
@@ -92,7 +92,7 @@ jobs:
               }
 
               @Override
-              protected void onSaveInstanceState(Bundle outState) {
+              public void onSaveInstanceState(Bundle outState) {
                   super.onSaveInstanceState(outState);
                   WebView webView = getBridge().getWebView();
                   if (webView != null) {
@@ -101,7 +101,7 @@ jobs:
               }
 
               @Override
-              protected void onRestoreInstanceState(Bundle savedInstanceState) {
+              public void onRestoreInstanceState(Bundle savedInstanceState) {
                   super.onRestoreInstanceState(savedInstanceState);
                   WebView webView = getBridge().getWebView();
                   if (webView != null) {
