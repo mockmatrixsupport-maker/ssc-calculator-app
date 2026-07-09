@@ -1,0 +1,135 @@
+{
+  "_comment": "Same shape/rules as exams-rrb-test-config.json (see its _comment) — keys match exams-ssc.json ids. SSC moved several exams to strict per-section timing starting the 2026 cycle, so 'sectional' is more common here than on the RRB side.",
+
+  "ssc-cgl-tier1": {
+    "title": "SSC CGL — Tier I",
+    "timerMode": "sectional",
+    "verified": true,
+    "source": "2026 pattern change: each of the 4 sections now gets its own locked 15-minute timer (25 Q/section, 60 min total) — you can no longer move time between sections (SSC official notification, confirmed by multiple 2026 sources)",
+    "groups": [
+      { "label": "General Intelligence & Reasoning", "minutes": 15, "matchSections": ["intelligence", "reasoning"] },
+      { "label": "General Awareness", "minutes": 15, "matchSections": ["general awareness", "general knowledge", "gk", "gs"] },
+      { "label": "Quantitative Aptitude", "minutes": 15, "matchSections": ["quant", "math", "numerical"] },
+      { "label": "English Language", "minutes": 15, "matchSections": ["english"] }
+    ],
+    "defaultGroupMinutes": 15
+  },
+  "ssc-cgl-tier2": {
+    "title": "SSC CGL — Tier II",
+    "timerMode": "sectional",
+    "verified": false,
+    "source": "2026 pattern confirms Tier II Paper I also has per-section locked timing (Section I: Maths+Reasoning, Section II: English+GA, Section III has the Data Entry module), but this session's search did not turn up the exact per-section minute split — the group minutes below are a reasonable placeholder only. Verify against the current-cycle official notification before relying on this for real timing practice.",
+    "groups": [
+      { "label": "Section I — Maths & Reasoning", "minutes": 60, "matchSections": ["math", "quant", "reasoning", "intelligence"] },
+      { "label": "Section II — English & GA", "minutes": 45, "matchSections": ["english", "general awareness", "gk"] },
+      { "label": "Section III — Computer", "minutes": 15, "matchSections": ["computer"] }
+    ],
+    "defaultGroupMinutes": 30
+  },
+  "ssc-chsl-tier1": {
+    "title": "SSC CHSL — Tier I",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Traditionally a 60-minute composite paper (100 Q, all sections share one pool) — this session's search did not turn up an equivalent sectional-timing change for CHSL like the one confirmed for CGL Tier I, but SSC has been rolling that pattern out exam-by-exam, so double-check the live notification for the cycle you're targeting."
+  },
+  "ssc-chsl-tier2": {
+    "title": "SSC CHSL — Tier II",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Single-session composite paper covering the objective sections; not independently re-confirmed this session."
+  },
+  "ssc-cpo-tier1": {
+    "title": "SSC CPO — Paper I",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Historically a 60-minute composite paper (200 Q across 4 sections) — not re-confirmed this session, verify before relying on it."
+  },
+  "ssc-cpo-tier2": {
+    "title": "SSC CPO — Paper II",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Not confirmed this session."
+  },
+  "ssc-gd": {
+    "title": "SSC GD Constable",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Single-tier composite paper, 60 minutes is the commonly cited current duration — not independently re-confirmed this session."
+  },
+  "ssc-mts": {
+    "title": "SSC MTS / Havaldar",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": false,
+    "source": "Current pattern is a single composite session covering all sections together — not independently re-confirmed this session."
+  },
+  "ssc-je": {
+    "title": "SSC JE",
+    "timerMode": "full",
+    "totalMinutes": 120,
+    "verified": false,
+    "source": "Paper I composite — not independently re-confirmed this session."
+  },
+  "ssc-steno": {
+    "title": "SSC Stenographer (Gr. C & D)",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "ssc-selection-post": {
+    "title": "SSC Selection Post",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "ssc-hindi-translator": {
+    "title": "SSC Junior Hindi Translator (JHT/JT)",
+    "timerMode": "full",
+    "totalMinutes": 120,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "ssc-hcm": {
+    "title": "SSC Head Constable (Ministerial)",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "ssc-awo-tpo": {
+    "title": "SSC AWO / TPO",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "delhi-police-driver": {
+    "title": "Delhi Police Driver",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+  "delhi-police-constable-exe": {
+    "title": "Delhi Police Constable (Executive)",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": false,
+    "source": "Not independently re-confirmed this session."
+  },
+
+  "_default": {
+    "title": "Unlisted SSC exam",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": false,
+    "source": "Fallback used when an exam id has no entry above."
+  }
+}

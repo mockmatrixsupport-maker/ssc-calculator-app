@@ -1,0 +1,100 @@
+{
+  "_comment": "Timer config for 'Attempt as Mock Test'. Keys match the ids in exams-rrb.json. timerMode 'full' = one composite countdown for the whole paper (all sections share the pool, can move freely between them — this is how almost every RRB CBT actually works). timerMode 'sectional' = the paper is split into timed groups; a group locks and auto-advances to the next group when its own clock hits zero. 'matchSections' are lowercase substrings checked against each parsed section name (same keyword-matching approach score-engine.js already uses for shortSectionName) to sort the real parsed sections into the right timed group at runtime — unmatched sections fall into their own group at 'defaultGroupMinutes'. 'verified' + 'source' record whether this was confirmed against a live search just now or is a reasonable same-family default that should be double-checked against the latest official notification before relying on it for real prep.",
+
+  "rrb-ntpc-ug-cbt1": {
+    "title": "RRB NTPC (Under Graduate) — CBT I",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "100 Q / 90 min composite, explicitly no sectional timing (RRB official pattern, multiple 2026 sources)"
+  },
+  "rrb-ntpc-ug-cbt2": {
+    "title": "RRB NTPC (Under Graduate) — CBT II",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "120 Q / 90 min composite (same no-sectional rule as CBT I)"
+  },
+  "rrb-ntpc-grad-cbt1": {
+    "title": "RRB NTPC (Graduate) — CBT I",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "100 Q / 90 min composite"
+  },
+  "rrb-ntpc-grad-cbt2": {
+    "title": "RRB NTPC (Graduate) — CBT II",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "120 Q / 90 min composite"
+  },
+  "rrb-groupd": {
+    "title": "RRB Group D",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "100 Q / 90 min composite, no sectional timing (RRB Group D official 2026 pattern)"
+  },
+  "rrb-alp-cbt1": {
+    "title": "RRB ALP — CBT I",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": true,
+    "source": "75 Q / 60 min composite, screening stage"
+  },
+  "rrb-alp-cbt2": {
+    "title": "RRB ALP — CBT II",
+    "timerMode": "sectional",
+    "verified": true,
+    "source": "Part A and Part B run back-to-back same day with SEPARATE clocks, not a shared pool: Part A 100 Q / 90 min, Part B (trade) 75 Q / 60 min",
+    "groups": [
+      { "label": "Part A", "minutes": 90, "matchSections": ["math", "reasoning", "intelligence", "science", "engineering", "awareness", "general"] },
+      { "label": "Part B (Trade)", "minutes": 60, "matchSections": ["trade"] }
+    ],
+    "defaultGroupMinutes": 90
+  },
+  "rrb-alp-cbt2-parta-only": {
+    "title": "RRB ALP — CBT II (Part A only)",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "Use this id if your source paper only carries Part A (100 Q, Math/Reasoning/Basic Science & Engineering/GA)"
+  },
+  "rrb-je-cbt1": {
+    "title": "RRB JE — CBT I",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": true,
+    "source": "100 Q / 90 min composite"
+  },
+  "rrb-je-cbt2": {
+    "title": "RRB JE — CBT II",
+    "timerMode": "full",
+    "totalMinutes": 120,
+    "verified": true,
+    "source": "150 marks / 120 min composite"
+  },
+  "rrb-technician": {
+    "title": "RRB Technician",
+    "timerMode": "full",
+    "totalMinutes": 60,
+    "verified": true,
+    "source": "CBT I shared with ALP: 75 Q / 60 min composite. Technician CBT II (Part A only, no CBAT/Part B) duration wasn't confirmed live — verify against the current notification if attempting CBT II specifically."
+  },
+  "rrb-paramedical": {
+    "title": "RRB Paramedical Staff",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": false,
+    "source": "Not confirmed via live search this session — 90 min composite is the standard single-stage RRB CBT default, but check the specific post's official notification before relying on this."
+  },
+
+  "_default": {
+    "title": "Unlisted RRB exam",
+    "timerMode": "full",
+    "totalMinutes": 90,
+    "verified": false,
+    "source": "Fallback used when an exam id has no entry above — RRB CBTs are composite-timer by default, 90 minutes is the most common duration."
+  }
+}
