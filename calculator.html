@@ -725,7 +725,8 @@ function fillSelect(selectEl, options, opts = {}) {
         }
         const correctMark = examObj.correct;
         const wrongMark = examObj.wrong;
-        RSMScoreEngine.run(fetchResult.family, fetchResult.parts, correctMark, wrongMark, resultsSection, url, RSM_CTX);
+        const qualifying = examObj.qualifying || [];
+        RSMScoreEngine.run(fetchResult.family, fetchResult.parts, correctMark, wrongMark, resultsSection, url, RSM_CTX, qualifying);
       }
 
       if (fetchResult.family !== FAMILY.id) {
@@ -755,5 +756,6 @@ function fillSelect(selectEl, options, opts = {}) {
 
 </body>
 </html>
+
 
 
