@@ -411,14 +411,14 @@ function fillSelect(selectEl, options, opts = {}) {
     document.getElementById('zoneFieldHint').textContent = 'All zones across ' + FAMILY.title.replace(' Exams Calculator', '');
     fillSelect(document.getElementById('zoneField'), FAMILY.zones);
     fillSelect(document.getElementById('state'), stateOptions);
-    fillSelect(document.getElementById('language'), languageOptions, { placeholder: false });
+    fillSelect(document.getElementById('language'), languageOptions, { placeholderText: 'Select' });
     stateEl = document.getElementById('state');
     languageEl = document.getElementById('language');
     document.getElementById('stateNoZone').closest('.form-group').remove();
   } else {
     document.getElementById('zoneGroup').remove();
     fillSelect(document.getElementById('stateNoZone'), stateOptions);
-    fillSelect(document.getElementById('languageNoZone'), languageOptions, { placeholder: false });
+    fillSelect(document.getElementById('languageNoZone'), languageOptions, { placeholderText: 'Select' });
     stateEl = document.getElementById('stateNoZone');
     languageEl = document.getElementById('languageNoZone');
   }
