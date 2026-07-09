@@ -91,7 +91,12 @@ const RSMSubmission = (() => {
         score: result.totalScore,
         category: formFields.category || 'NA',
         gender: formFields.gender || 'NA',
-        zone: formFields.zone || null  // genuinely optional (non-RRB exams) — stays NULL
+        zone: formFields.zone || null,  // genuinely optional (non-RRB exams) — stays NULL
+        // q_s_t = qualifying section total marks. Only present for exams
+        // with a qualifying section (score-engine's calculate() omits
+        // qualifyingTotal entirely otherwise) — column stays NULL for
+        // every other exam, exactly like zone above.
+        q_s_t: result.qualifyingTotal != null ? result.qualifyingTotal : null
       };
 
       const res = await fetch(SUPABASE_UPSERT_URL, {
@@ -138,6 +143,7 @@ const RSMSubmission = (() => {
       skipped: s.skipped,
       bonus: s.bonus,
       score: s.score,
+      isQualifying: !!s.isQualifying,
       questions: s.questions || {}
     }));
 
@@ -172,7 +178,16 @@ const RSMSubmission = (() => {
         totalQ: result.totalQ,
         totalScore: result.totalScore,
         maxScore: result.maxScore,
-        pct: result.pct
+        pct: result.pct,
+        // Present only for exams with a qualifying section — undefined
+        // (and dropped by JSON.stringify) for every other exam.
+        qualifyingCorrect: result.qualifyingCorrect,
+        qualifyingWrong: result.qualifyingWrong,
+        qualifyingSkipped: result.qualifyingSkipped,
+        qualifyingBonus: result.qualifyingBonus,
+        qualifyingQ: result.qualifyingQ,
+        qualifyingTotal: result.qualifyingTotal,
+        qualifyingMax: result.qualifyingMax
       },
       submittedAt: new Date().toISOString()
     };
@@ -272,3 +287,4 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
+
