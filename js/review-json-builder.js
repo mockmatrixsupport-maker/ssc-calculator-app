@@ -657,6 +657,77 @@ const RSMReviewBuilder = (() => {
   }
 
   // ═══════════════════════════════════════════════
+  // Blank test-paper extraction ("Attempt as Mock Test")
+  // ═══════════════════════════════════════════════
+  // Same source HTML, same parsing helpers as build() above (identical
+  // MathML→LaTeX, identical real-image handling, identical <br>
+  // preservation) — a past candidate's answer-key page already carries
+  // every question, option and the correct answer (rightAns/green-yellow),
+  // regardless of what that one candidate personally picked. buildBlank()
+  // reuses every RRB/SSC helper verbatim and only discards the
+  // candidate-specific bits (status, isChosen, rollNo/candidateName)
+  // since nobody has attempted THIS run yet — test.js fills those back
+  // in locally as the person answers, then hands its OWN attempt off to
+  // review.html using this exact same schema, so review.js (solution
+  // mode) needs zero changes to display it afterwards.
+
+  function stripToBlankQuestion(q) {
+    return {
+      qno: q.qno,
+      qId: q.qId,
+      question: q.question,
+      options: (q.options || []).map(o => ({
+        label: o.label,
+        text: o.text,
+        images: o.images,
+        isCorrect: !!o.isCorrect
+      }))
+    };
+  }
+
+  function buildBlankRRB(parts, sourceUrl) {
+    const html = parts.p1 || Object.values(parts)[0] || '';
+    // family + examName only — rollNo/candidateName belong to whichever
+    // candidate originally sat THIS paper, not to whoever is about to
+    // attempt it fresh as a mock test, so they're deliberately dropped.
+    const meta = { family: 'rrb', examName: rrbCandidateInfo(html).examName || '' };
+    const rawSections = rrbSplitSections(html);
+
+    const sections = rawSections.map(sec => {
+      const blocks = rrbSplitQuestions(sec.html);
+      const questions = blocks
+        .map(b => Object.assign({ qno: b.qno }, rrbParseQuestionBlock(b.html, sourceUrl)))
+        .map(stripToBlankQuestion);
+      return { name: sec.name, questions };
+    }).filter(s => s.questions.length > 0);
+
+    return { meta, sections };
+  }
+
+  function buildBlankSSC(parts, sourceUrl) {
+    const sortedKeys = Object.keys(parts).sort((a, b) => {
+      const na = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const nb = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      return na - nb;
+    });
+
+    let examName = '';
+    const sections = [];
+    sortedKeys.forEach((key, idx) => {
+      const html = parts[key];
+      if (!examName) examName = sscCandidateInfo(html).examName || '';
+      const part = sscParsePart(html, idx + 1, sourceUrl);
+      sections.push({ name: part.name, questions: part.questions.map(stripToBlankQuestion) });
+    });
+
+    return { meta: { family: 'ssc', examName }, sections: sections.filter(s => s.questions.length > 0) };
+  }
+
+  function buildBlank(family, parts, sourceUrl) {
+    return family === 'rrb' ? buildBlankRRB(parts, sourceUrl) : buildBlankSSC(parts, sourceUrl);
+  }
+
+  // ═══════════════════════════════════════════════
   // Public entry point
   // ═══════════════════════════════════════════════
 
@@ -673,8 +744,9 @@ const RSMReviewBuilder = (() => {
     return buildSSC(parts, sourceUrl);
   }
 
-  return { build };
+  return { build, buildBlank };
 })();
+
 
 
 
