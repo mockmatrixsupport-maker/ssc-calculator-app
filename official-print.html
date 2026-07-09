@@ -12,14 +12,38 @@
   .op-toolbar {
     position: sticky; top: 0; z-index: 1000;
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e5e5;
+    padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top));
+    background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+    box-shadow: 0 2px 10px rgba(15, 118, 110, 0.25);
+  }
+  .op-toolbar__brand {
+    display: flex; align-items: center; gap: 8px;
+    min-width: 0;
+  }
+  .op-toolbar__logo {
+    width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .op-toolbar__title {
+    color: #fff; font-size: 0.92rem; font-weight: 700; letter-spacing: 0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .op-toolbar button {
-    padding: 9px 14px; border-radius: 8px; border: none; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    padding: 9px 15px; border-radius: 9px; border: none; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.1s ease;
   }
-  .op-back { background: #f1f1ef; color: #333; }
-  .op-save { background: #0f766e; color: #fff; }
+  .op-toolbar button:active { transform: scale(0.96); }
+  .op-back { background: rgba(255,255,255,0.16); color: #fff; }
+  .op-save { background: #fff; color: #0f766e; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
   .op-save:disabled { opacity: 0.6; }
+
+  .op-img-warning {
+    display: flex; align-items: center; gap: 8px;
+    margin: 10px 14px 0; padding: 10px 14px; border-radius: 10px;
+    background: #fff7ed; border: 1px solid #fdba74; color: #9a3412;
+    font-size: 0.82rem; font-weight: 600;
+  }
+  .op-img-warning.hidden { display: none; }
 
   .op-loading, .op-error {
     text-align: center; padding: 60px 20px; color: #888; font-size: 0.85rem;
@@ -38,6 +62,7 @@
      official content itself. ── */
   @media print {
     .op-toolbar { display: none !important; }
+    .op-img-warning { display: none !important; }
     body { background: #fff; }
   }
 </style>
@@ -45,9 +70,17 @@
 <body>
 
 <div class="op-toolbar no-print">
-  <button class="op-back" id="opBackBtn">← Back</button>
-  <button class="op-save" id="opSaveBtn">Save / Print Answer Key</button>
+  <div class="op-toolbar__brand">
+    <img class="op-toolbar__logo" src="logo.jpg" alt="">
+    <span class="op-toolbar__title">Answer Key</span>
+  </div>
+  <div style="display:flex; gap:8px; flex-shrink:0;">
+    <button class="op-back" id="opBackBtn">← Back</button>
+    <button class="op-save" id="opSaveBtn">Save / Print Answer Key</button>
+  </div>
 </div>
+
+<div class="op-img-warning hidden" id="opImgWarning">⚠️ All images not loaded, wait for all images to load</div>
 
 <div class="op-loading" id="opLoading">Preparing your answer key…</div>
 <div class="op-error hidden" id="opError">
@@ -80,8 +113,22 @@
     error: document.getElementById('opError'),
     root: document.getElementById('officialPrintRoot'),
     backBtn: document.getElementById('opBackBtn'),
-    saveBtn: document.getElementById('opSaveBtn')
+    saveBtn: document.getElementById('opSaveBtn'),
+    toolbarTitle: document.querySelector('.op-toolbar__title'),
+    imgWarning: document.getElementById('opImgWarning')
   };
+
+  // True only once every <img> inside the merged content has actually
+  // finished loading (or failed — either way, it's settled, not still
+  // pending). A src that 404s still counts as "settled" here since
+  // there's nothing further to wait for.
+  function allImagesLoaded() {
+    const imgs = els.root.querySelectorAll('img');
+    for (const img of imgs) {
+      if (!img.complete) return false;
+    }
+    return true;
+  }
 
   function init() {
     const data = consumeHandoff();
@@ -92,6 +139,7 @@
     }
 
     document.title = data.title || 'Answer Key';
+    if (els.toolbarTitle) els.toolbarTitle.textContent = data.title || 'Answer Key';
 
     // Inject the merged, de-duplicated styles collected from every
     // part into this page's own <head> — the source portal's
@@ -115,6 +163,12 @@
   });
 
   els.saveBtn.addEventListener('click', async () => {
+    if (!allImagesLoaded()) {
+      els.imgWarning.classList.remove('hidden');
+      return;
+    }
+    els.imgWarning.classList.add('hidden');
+
     els.saveBtn.disabled = true;
     els.saveBtn.textContent = 'Opening…';
     try {
