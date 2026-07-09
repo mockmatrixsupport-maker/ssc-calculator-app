@@ -525,6 +525,56 @@ const RSMUI = (() => {
     }
   }
 
+  // ── Attempt as Mock Test handoff ──
+  // Same idea as openReviewPaper() just above: builds a fresh JSON on
+  // demand from the SAME raw HTML `parts` already sitting in memory on
+  // the result card, hands it to test.html through sessionStorage under
+  // its own short-lived key, and navigates there. The one real
+  // difference is the JSON itself — RSMReviewBuilder.buildBlank() strips
+  // away the ORIGINAL candidate's chosen answers/status (this browser's
+  // person is about to attempt the paper fresh, not read someone else's
+  // result), keeping only the question/option/correct-answer content.
+  // examId is recovered from RSMCache the same way buildRankCtx() in
+  // score-engine.js already does, purely to look up the right timer
+  // config and marking scheme — nothing here talks to score-engine.js.
+  const TEST_HANDOFF_KEY = 'rsm-test-handoff';
+
+  function openAttemptMock(cardEl, meta) {
+    if (typeof RSMReviewBuilder === 'undefined' || !RSMReviewBuilder.buildBlank) {
+      toast('Mock test module failed to load — refresh and try again');
+      return;
+    }
+    const pdfData = cardEl && cardEl._rsmPdfData;
+    const parts = pdfData && pdfData.parts;
+    const family = (meta && meta.family) || (pdfData && pdfData.family);
+    const url = (meta && meta.url) || (pdfData && pdfData.url);
+
+    if (!parts || !family) {
+      toast('Please recalculate this result once, then try Attempt as Mock again');
+      return;
+    }
+
+    const formFields = (typeof RSMCache !== 'undefined' && RSMCache.getFormFields && url)
+      ? (RSMCache.getFormFields(url) || {})
+      : {};
+
+    try {
+      const blank = RSMReviewBuilder.buildBlank(family, parts, url);
+      if (!blank || !blank.sections || !blank.sections.length) {
+        toast('Could not build a mock test from this result');
+        return;
+      }
+      sessionStorage.setItem(TEST_HANDOFF_KEY, JSON.stringify({
+        blank,
+        family,
+        examId: formFields.examId || null
+      }));
+      window.location.href = 'test.html';
+    } catch (e) {
+      toast('Could not start the mock test — try again');
+    }
+  }
+
   // ── Official Answer Key print/save (merged, watermark-free, native print) ──
   // Delegates the actual sanitize+merge work to official-print.js, which
   // reads the SAME cardEl._rsmPdfData.parts stash as the PDF and Review
@@ -568,7 +618,7 @@ const RSMUI = (() => {
             openOfficialPrint(cardEl, meta);
             break;
           case 'attempt-mock':
-            toast('Attempt as Mock — coming soon');
+            openAttemptMock(cardEl, meta);
             break;
         }
       });
@@ -608,5 +658,6 @@ const RSMUI = (() => {
     isNativeApp
   };
 })();
+
 
 
