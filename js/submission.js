@@ -1,8 +1,11 @@
 /* ═══════════════════════════════════════════════════
-   RANK SCORE MASTER — submission.js (Dual Production Pipeline)
-   Silent, non-blocking background submission to BOTH:
+   RANK SCORE MASTER — submission.js (Triple Production Pipeline)
+   Silent, non-blocking background submission to ALL THREE:
      1. AWS (API Gateway -> Lambda A) - Full Tracking Payload Warehouse
      2. Supabase (Direct REST API HTTP) - Lightweight Live Rank Master Row
+     3. Cloudflare Worker + KV + GitHub - Raw source-HTML archive
+        (check-source gate first, only uploads HTML from the phone if
+        that exam's date+shift+lang combo isn't archived yet)
 
    UPDATED:
    - on_conflict=exam_id,shift_id,roll_number added so merge-duplicates
@@ -27,6 +30,9 @@ const RSMSubmission = (() => {
   // key (id), which is never sent, so duplicate roll numbers hit the
   // real constraint as a raw error instead of being upserted.
   const SUPABASE_UPSERT_URL = `${SUPABASE_REST_URL}?on_conflict=exam_id,shift_id,roll_number`;
+
+  // Pipeline C: source-HTML archiver worker (Cloudflare Worker + KV + GitHub)
+  const ARCHIVER_BASE_URL = 'https://rsm-souce-archiever.chaudharysr01.workers.dev';
 
   const QUEUE_KEY = 'rsm_submission_queue_v1';
   const MAX_QUEUE_SIZE = 200;       // oldest items dropped first past this
@@ -121,6 +127,42 @@ const RSMSubmission = (() => {
     } catch (e) {
       console.error('Supabase rank_master insert error:', e);
       return false; // Silently falls back if network spikes
+    }
+  }
+
+  /**
+   * Pipeline C: background archive of the raw source HTML to GitHub via
+   * the Cloudflare Worker + KV dedupe gate. Cheap existence check first —
+   * only uploads HTML from this phone if nobody has archived this exam's
+   * date+shift+lang combo yet. Never awaited by the caller, never throws.
+   */
+  async function archiveSourceHtml(family, parts, info, formFields, sourceUrl) {
+    if (!ARCHIVER_BASE_URL || !parts || !formFields.examId) return;
+
+    const partsArr = Object.keys(parts)
+      .map(name => ({ name, html: parts[name] }))
+      .filter(p => typeof p.html === 'string' && p.html.length);
+    if (!partsArr.length) return;
+
+    const examId = formFields.examId;
+    const lang = formFields.language || 'default';
+    const shift = info.shift || 'NA';
+    const date = info.date || 'na';
+
+    try {
+      const q = new URLSearchParams({ family, examId, date, shift, lang });
+      const checkRes = await fetch(`${ARCHIVER_BASE_URL}/check-source?${q}`);
+      const { exists } = await checkRes.json();
+      if (exists) return; // already archived — nothing uploaded from this phone
+
+      fetch(`${ARCHIVER_BASE_URL}/commit-source`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ family, examId, date, shift, lang, sourceUrl, parts: partsArr }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) {
+      // archiving must never affect scoring/submission
     }
   }
 
@@ -257,6 +299,9 @@ const RSMSubmission = (() => {
       formFields = RSMCache.getFormFields(meta.url) || {};
     }
 
+    // 0. Pipeline C: background source-HTML archive (fire-and-forget).
+    archiveSourceHtml(meta.family, meta.parts, info, formFields, meta.url);
+
     // 1. Pipeline A: Direct lightweight upsert execution to Supabase Table.
     //    Still async and non-blocking for the score card — but now the
     //    caller gets this promise back so IT can decide to wait before
@@ -287,4 +332,5 @@ const RSMSubmission = (() => {
 
   return { submit };
 })();
+
 
