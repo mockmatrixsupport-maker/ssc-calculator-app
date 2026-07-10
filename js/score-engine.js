@@ -416,8 +416,9 @@ const RSMScoreEngine = (() => {
     // fromCache is deliberately absent/false here — renderInto shows the
     // rank skeleton only, it will NOT auto-fetch (see renderInto above).
     renderInto(containerEl, result, { url: sourceUrl, family, uiCtx, parts });
-
-    const rankMeta = { url: sourceUrl, family };
+     
+   const rankMeta = { url: sourceUrl, family, parts };
+    
 
     // Submission still never blocks or delays the score card itself —
     // that's already fully rendered above. What changed: the rank
