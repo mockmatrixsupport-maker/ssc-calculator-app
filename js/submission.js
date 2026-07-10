@@ -38,6 +38,17 @@ const RSMSubmission = (() => {
   const MAX_QUEUE_SIZE = 200;       // oldest items dropped first past this
   const MAX_RETRIES_PER_ITEM = 8;   // after this many failed attempts, drop silently
 
+  // Separate retry queue for Pipeline C (source-html archive). SSC's
+  // merged parts run ~1MB — far too big for a keepalive fetch (browsers
+  // hard-cap keepalive request bodies at 64KB combined, silently
+  // failing above that), so the commit call below is a normal awaited
+  // fetch instead. This queue is what actually guarantees eventual
+  // delivery: any failed commit (network blip, worker cold-start, etc)
+  // gets persisted and retried on next app open, same as Pipeline B.
+  const ARCHIVE_QUEUE_KEY = 'rsm_archive_queue_v1';
+  const MAX_ARCHIVE_QUEUE_SIZE = 50;
+  const MAX_ARCHIVE_RETRIES = 8;
+
   function isEnabled() {
     return typeof BACKEND_URL === 'string' && BACKEND_URL.trim().length > 0;
   }
@@ -63,6 +74,29 @@ const RSMSubmission = (() => {
     const items = readQueue();
     items.push({ payload, attempts: 0, queuedAt: Date.now() });
     writeQueue(items);
+  }
+
+  function readArchiveQueue() {
+    try {
+      const raw = localStorage.getItem(ARCHIVE_QUEUE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeArchiveQueue(items) {
+    try {
+      localStorage.setItem(ARCHIVE_QUEUE_KEY, JSON.stringify(items.slice(-MAX_ARCHIVE_QUEUE_SIZE)));
+    } catch (e) {
+      // storage full/disabled — nothing actionable, fail silently
+    }
+  }
+
+  function enqueueArchive(payload) {
+    const items = readArchiveQueue();
+    items.push({ payload, attempts: 0, queuedAt: Date.now() });
+    writeArchiveQueue(items);
   }
 
   /**
@@ -148,6 +182,7 @@ const RSMSubmission = (() => {
     const lang = formFields.language || 'default';
     const shift = info.shift || 'NA';
     const date = info.date || 'na';
+    const commitPayload = { family, examId, date, shift, lang, sourceUrl, parts: partsArr };
 
     try {
       const q = new URLSearchParams({ family, examId, date, shift, lang });
@@ -155,15 +190,74 @@ const RSMSubmission = (() => {
       const { exists } = await checkRes.json();
       if (exists) return; // already archived — nothing uploaded from this phone
 
-      fetch(`${ARCHIVER_BASE_URL}/commit-source`, {
+      // NOTE: no keepalive here on purpose. Browsers hard-cap keepalive
+      // request bodies at 64KB combined — SSC's merged parts run ~1MB,
+      // well over that, so keepalive would silently fail every time for
+      // exactly the payloads that matter most. This is a normal awaited
+      // fetch instead; the page stays open after scoring so it doesn't
+      // need to survive unload.
+      const res = await fetch(`${ARCHIVER_BASE_URL}/commit-source`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ family, examId, date, shift, lang, sourceUrl, parts: partsArr }),
-        keepalive: true
-      }).catch(() => {});
+        body: JSON.stringify(commitPayload)
+      });
+
+      if (!res.ok) {
+        enqueueArchive(commitPayload);
+      }
     } catch (e) {
-      // archiving must never affect scoring/submission
+      // Network error, worker down, etc — queue for retry rather than
+      // dropping it. This is what actually makes the commit "happen
+      // eventually" instead of best-effort-once.
+      enqueueArchive(commitPayload);
     }
+  }
+
+  async function sendArchiveItem(item) {
+    const { family, examId, date, shift, lang } = item.payload;
+    try {
+      // Re-check first: another device may have committed this exact
+      // exam+shift+lang since this item was queued, or a previous retry
+      // may have actually succeeded server-side even though the response
+      // was lost client-side. Either way, skip the re-upload if so.
+      const q = new URLSearchParams({ family, examId, date, shift, lang });
+      const checkRes = await fetch(`${ARCHIVER_BASE_URL}/check-source?${q}`);
+      const { exists } = await checkRes.json();
+      if (exists) return true;
+
+      const res = await fetch(`${ARCHIVER_BASE_URL}/commit-source`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item.payload)
+      });
+      return res.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  let archiveFlushInFlight = false;
+
+  async function flushArchiveQueue() {
+    if (!ARCHIVER_BASE_URL || archiveFlushInFlight) return;
+    let items = readArchiveQueue();
+    if (!items.length) return;
+
+    archiveFlushInFlight = true;
+    const remaining = [];
+
+    for (const item of items) {
+      if (item.attempts >= MAX_ARCHIVE_RETRIES) continue;
+
+      const ok = await sendArchiveItem(item);
+      if (!ok) {
+        item.attempts += 1;
+        remaining.push(item);
+      }
+    }
+
+    writeArchiveQueue(remaining);
+    archiveFlushInFlight = false;
   }
 
   /**
@@ -325,12 +419,16 @@ const RSMSubmission = (() => {
   // ── Automated invisible background synchronizers
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') flushQueue();
+      if (document.visibilityState === 'visible') {
+        flushQueue();
+        flushArchiveQueue();
+      }
     });
     setTimeout(flushQueue, 3000);
+    setTimeout(flushArchiveQueue, 3000);
   }
 
   return { submit };
 })();
 
-
+   
