@@ -161,6 +161,30 @@ a { color: var(--ink-light); text-decoration: none; }
 .theme-toggle:hover { background: var(--bg-card-hover); color: var(--ink-light); border-color: var(--border-strong); }
 .theme-toggle svg { width: 17px; height: 17px; }
 
+/* ── App switcher toggle (Rank Master / Mock Matrix) — sits as a
+   second row inside the sticky header, right under logo/actions ── */
+.app-header__switchrow {
+  padding: 0 var(--sp-4) var(--sp-3);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--sp-3);
+}
+
+.app-switch {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px;
+  max-width: 320px; width: calc(100% - 8px); margin: 0 auto;
+}
+.app-switch__btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 999px; border: none; background: transparent;
+  font-size: 0.78rem; font-weight: 700; color: var(--text-muted); cursor: pointer;
+  transition: all var(--dur) var(--ease); font-family: var(--font-body);
+}
+.app-switch__btn img { width: 17px; height: 17px; border-radius: 4px; object-fit: cover; }
+.app-switch__btn--active { background: var(--bg-card); color: var(--ink); box-shadow: var(--shadow-sm); }
+.app-switch__btn:disabled { cursor: default; }
+
 .btn-back {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md);
@@ -326,3 +350,4 @@ a { color: var(--ink-light); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
