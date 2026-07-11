@@ -115,24 +115,6 @@
 .app-footer p { font-size: 0.7rem; color: var(--text-muted); }
 .app-footer a { color: var(--ink-light); }
 
-/* ── App switcher toggle (Rank Master / Mock Matrix) ── */
-.app-switch {
-  display: flex; align-items: center; gap: 2px;
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: 999px; padding: 3px; margin: var(--sp-3) 0;
-  max-width: 280px; margin-left: auto; margin-right: auto;
-}
-.app-switch__btn {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
-  padding: 6px 10px; border-radius: 999px; border: none; background: transparent;
-  font-size: 0.72rem; font-weight: 700; color: var(--text-muted); cursor: pointer;
-  transition: all var(--dur) var(--ease);
-}
-.app-switch__btn img { width: 15px; height: 15px; border-radius: 4px; object-fit: cover; }
-.app-switch__btn--active {
-  background: var(--bg-card); color: var(--ink); box-shadow: var(--shadow-sm);
-}
-
 /* ── Notification bell ── */
 .bell-btn { position: relative; }
 .bell-badge {
@@ -177,6 +159,16 @@
       </button>
     </div>
   </div>
+  <div class="app-header__switchrow">
+    <div class="app-switch">
+      <button class="app-switch__btn app-switch__btn--active" type="button" disabled>
+        <img src="logo.jpg" alt="">Rank Master
+      </button>
+      <button class="app-switch__btn" type="button" id="switchToMockMatrix">
+        <img src="mockmatrix-logo.png" alt="">Mock Matrix
+      </button>
+    </div>
+  </div>
 </header>
 
 <main class="page-main">
@@ -187,15 +179,6 @@
       <p class="hero__eyebrow">Score · Rank · Analyse</p>
       <h1 class="hero__title">Welcome to<br><em>Rank Score Master</em></h1>
     </section>
-
-    <div class="app-switch fade-up">
-      <button class="app-switch__btn app-switch__btn--active" type="button" disabled>
-        <img src="logo.jpg" alt="">Rank Master
-      </button>
-      <button class="app-switch__btn" type="button" id="switchToMockMatrix">
-        <img src="mockmatrix-logo.png" alt="">Mock Matrix
-      </button>
-    </div>
 
     <div id="notifPromptSlot"></div>
 
@@ -393,8 +376,4 @@ document.addEventListener('visibilitychange', function () {
 </script>
 </body>
 </html>
-
-
-
-
 
