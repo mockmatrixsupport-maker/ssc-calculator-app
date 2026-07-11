@@ -34,7 +34,7 @@ jobs:
           mkdir -p www
           cp index.html calculator.html notifications.html review.html test.html official-print.html www/
           cp calculators.json www/
-          cp logo.jpg ssc-logo.jpg railway-logo.jpg www/
+          cp logo.jpg mockmatrix-logo.png ssc-logo.jpg railway-logo.jpg www/
           cp -r css www/
           cp -r js www/
           cp -r data www/
